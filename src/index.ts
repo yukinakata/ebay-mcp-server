@@ -689,6 +689,18 @@ async function ebayCreateListing(params: {
     }
   }
 
+  // 価格制限チェック: SpeedPAK Economyは$800未満のみ対応
+  if (price_usd >= 800) {
+    debugLog(`[ebayCreateListing] BLOCKED: Price $${price_usd} exceeds $800 SpeedPAK Economy limit`);
+    return {
+      success: false,
+      error: "出品中止: 販売価格が$800以上です（SpeedPAK Economy制限）",
+      reason: "price_exceeds_limit",
+      price_usd,
+      max_allowed: 800,
+    };
+  }
+
   // 説明文のサニタイズ（CDATAタグなど不要な文字を除去）
   const sanitizedDescription = description
     .replace(/<!\[CDATA\[/g, "")  // CDATA開始タグを除去
