@@ -1108,8 +1108,8 @@ async function calculatePrice(params: {
     priceUsd = newPriceUsd;
   }
 
-  // 最終価格（$X.99形式）
-  const finalPriceUsd = Math.max(Math.round(priceUsd) - 0.01, 0.99);
+  // 最終価格（計算結果をそのまま使用、小数点以下2桁に丸める）
+  const finalPriceUsd = Math.round(priceUsd * 100) / 100;
 
   // 実際の粗利計算
   const perOrderFeeFinal = finalPriceUsd > 10 ? EBAY_PER_ORDER_FEE_HIGH : EBAY_PER_ORDER_FEE_LOW;
