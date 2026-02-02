@@ -687,7 +687,7 @@ async function ebayCreateListing(params: {
       debugLog(`[ebayCreateListing] Monitor APIからSKU取得成功: ${sku}`);
     } else {
       // フォールバック: タイムスタンプベースのSKU生成
-      sku = `SKU-${Date.now().toString(36).toUpperCase()}`;
+      sku = Date.now().toString(36).toUpperCase();
       debugLog(`[ebayCreateListing] フォールバックSKU生成: ${sku}`);
     }
   }
@@ -1446,7 +1446,7 @@ const tools: Tool[] = [
       properties: {
         sku: {
           type: "string",
-          description: "商品SKU（オプショナル。未指定時はMonitor APIから自動発行、例: SKU-A1B2C3D4）",
+          description: "商品SKU（オプショナル。未指定時はMonitor APIから自動発行、例: A1B2C3D4）",
         },
         title: {
           type: "string",
