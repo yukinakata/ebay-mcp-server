@@ -152,6 +152,8 @@ async function registerToMonitor(data: {
   sku: string;
   ebay_item_id: string;
   product_name?: string;
+  brand?: string;
+  model_number?: string;
   ebay_price_usd: number;
   current_price_jpy?: number;
   weight_g?: number;
@@ -726,6 +728,8 @@ async function ebayCreateListing(params: {
   // Keepaデータを保存（Monitor API登録時に使用）
   let keepaData: {
     title: string | null;
+    brand: string | null;
+    model: string | null;
     price_jpy: number | null;
     stock_count: number | null;
     shipping_days_min: number | null;
@@ -743,6 +747,8 @@ async function ebayCreateListing(params: {
       // Keepaデータを保存（タイトル・価格も含む）
       keepaData = {
         title: keepaCheck.title,
+        brand: keepaCheck.brand,
+        model: keepaCheck.model,
         price_jpy: keepaCheck.price_jpy,
         stock_count: keepaCheck.stock_count,
         shipping_days_min: keepaCheck.shipping_days_min,
@@ -880,6 +886,8 @@ async function ebayCreateListing(params: {
       ebay_item_id: listingId,
       // Keepaタイトル（日本語）を優先、なければeBayタイトル
       product_name: keepaData?.title || title,
+      brand: keepaData?.brand || undefined,
+      model_number: keepaData?.model || undefined,
       ebay_price_usd: price_usd,
       // Keepa価格を優先
       current_price_jpy: keepaData?.price_jpy ?? current_price_jpy,
