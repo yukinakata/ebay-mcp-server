@@ -158,6 +158,7 @@ async function registerToMonitor(data: {
   current_price_jpy?: number;
   weight_g?: number;
   size_category?: string;
+  product_category?: string;
   length_cm?: number;
   width_cm?: number;
   height_cm?: number;
@@ -642,6 +643,7 @@ async function ebayCreateListing(params: {
   amazon_url?: string;  // 追加: Amazon URLから自動でASIN抽出
   current_price_jpy?: number;
   size_category?: string;
+  product_category?: string;  // DDP関税率決定用（watches/electronics/toys等）
   length_cm?: number;
   width_cm?: number;
   height_cm?: number;
@@ -668,6 +670,7 @@ async function ebayCreateListing(params: {
     amazon_url,
     current_price_jpy,
     size_category,
+    product_category = "default",  // デフォルトは 'default' (15%関税)
     length_cm,
     width_cm,
     height_cm,
@@ -905,6 +908,7 @@ async function ebayCreateListing(params: {
       current_price_jpy: keepaData?.price_jpy ?? current_price_jpy,
       weight_g: weight_kg ? Math.round(weight_kg * 1000) : undefined,
       size_category,
+      product_category,  // DDP関税率決定用カテゴリ
       length_cm,
       width_cm,
       height_cm,
@@ -1104,7 +1108,7 @@ async function calculatePrice(params: {
     const payoneerNetRate = (1 - PAYONEER_FEE_RATE) * effectiveRate;
     const newPriceUsd = (requiredRevenueJpy / payoneerNetRate + perOrderFee) / (1 - EBAY_FVF_RATE - EBAY_INTL_FEE_RATE);
 
-    if (Math.abs(newPriceUsd - priceUsd) < 0.01) break;
+    if (Math.abs(newPriceUsd - priceUsd) < 0.001) break;  // 精度を0.01→0.001に向上（より正確な15.0%粗利率）
     priceUsd = newPriceUsd;
   }
 
@@ -1338,6 +1342,10 @@ const tools: Tool[] = [
         size_category: {
           type: "string",
           description: "SpeedPAKサイズ区分（StandardA/StandardB/LargeA/LargeB、Monitor連携用）",
+        },
+        product_category: {
+          type: "string",
+          description: "商品カテゴリ（DDP関税率決定用: watches=9%, electronics=0%, default=15%等、Monitor連携用）",
         },
         length_cm: {
           type: "number",
