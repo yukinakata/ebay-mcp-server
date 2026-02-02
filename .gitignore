@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+
+# Logs
+*.log
+mcp-debug.log
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.bak
+
+# Test files (optional - keep test scripts)
+# test-*.mjs
+
+# Claude Code settings
+.claude/
+
+# Artifacts
+compass_artifact_*.md

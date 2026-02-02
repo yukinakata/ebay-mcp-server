@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ebay": {
+      "command": "node",
+      "args": ["/Users/nakata/Claude/ebay-mcp-server/dist/index.js"],
+      "env": {
+        "KEEPA_API_KEY": "bjmmmtm4ger2u3j7ci5l3ra6htu71hjun4e81lgjk0qke076cbm9pg9vpumjct4i",
+        "EBAY_CLIENT_ID": "YOUR_CLIENT_ID_HERE",
+        "EBAY_CLIENT_SECRET": "YOUR_CLIENT_SECRET_HERE",
+        "EBAY_REFRESH_TOKEN": "YOUR_REFRESH_TOKEN_HERE"
+      }
+    }
+  }
+}

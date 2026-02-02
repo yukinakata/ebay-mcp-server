@@ -1,0 +1,49 @@
+ebay-mcp-server
+cd /Users/nakata/Claude/ebay-mcp-server
+
+
+claude
+```
+
+### 2. MCPサーバー確認
+
+Claude Code内で以下を入力：
+```
+/mcp
+```
+
+`ebay-mcp-server` が表示されていれば準備完了です！
+
+### 3. 自動出品テスト
+
+以下のプロンプトを入力してください：
+```
+以下のAmazon商品をeBayに出品してください。出品前に内容を確認させてください。
+
+https://www.amazon.co.jp/dp/B002ZJXQ4G
+
+
+
+
+# スキルフォルダ作成
+mkdir -p ~/.claude/skills/ebay-auto-listing
+
+# スキルファイルをコピー
+cp ~/Desktop/ebay-auto-listing-SKILL.md ~/.claude/skills/ebay-auto-listing/SKILL.md
+
+# 確認
+cat ~/.claude/skills/ebay-auto-listing/SKILL.md | head -30
+```
+
+---
+
+## ✅ これで完了すると...
+
+Claude Codeで以下のように入力するだけで自動出品されます：
+```
+https://www.amazon.co.jp/dp/B002ZJXQ4G
+```
+
+または：
+```
+B002ZJXQ4G を出品して
