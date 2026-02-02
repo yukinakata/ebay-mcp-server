@@ -110,13 +110,16 @@ Claude が以下を実行：
 
 ## 価格計算ロジック
 
-ebay-profit-calculatorスキル準拠：
+ebay-profit-calculatorスキル準拠（2025年2月改定）：
 
-- eBay FVF: 13.25%
-- International Fee: 1.65%
-- Payoneer実効レート: ×0.975（2.5%の隠れコスト込み）
+- eBay FVF: 12.7%（2025年2月14日改定）
+- International Fee: 1.35%（日本セラー向け）
+- Per-order Fee: $0.40（$10超）/ $0.30（$10以下）
+- Payoneer手数料: 2%
+- Payoneer為替スプレッド: 2%（実効レート 98%）
 - SpeedPAK送料: 2025年1月16日改定版
-- DDP関税: カテゴリ別（electronics 0%, default 10%等）
+- DDP関税: カテゴリ別（electronics 0%, default 15%等、2025-2026年相互関税適用）
+- 通関手数料: ¥245（2025年10月改定）
 
 ## 開発
 
