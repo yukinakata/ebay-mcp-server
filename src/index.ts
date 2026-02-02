@@ -1151,6 +1151,158 @@ async function calculatePrice(params: {
   };
 }
 
+/**
+ * 粗利シミュレーション（出品せずに粗利を計算）
+ * Amazon商品のASINと販売予定価格を入力すると、粗利計算結果を返す（リサーチ用）
+ */
+async function estimateProfit(params: {
+  asin_or_url: string;
+  selling_price_usd: number;
+  product_category?: string;
+}) {
+  const { asin_or_url, selling_price_usd, product_category = "default" } = params;
+
+  // ASINを抽出
+  const asin = extractAsin(asin_or_url);
+  if (!asin) {
+    return { error: "ASINを抽出できませんでした" };
+  }
+
+  // Keepaから商品情報を取得
+  const keepaData = await keepaGetProduct(asin);
+  if (!keepaData || !keepaData.price_jpy || !keepaData.weight_g) {
+    return {
+      error: "Keepaから商品情報を取得できませんでした",
+      details: "価格または重量データが不足しています",
+    };
+  }
+
+  // 梱包重量を推定（ebay-shipping-estimatorと同じロジック）
+  const packagingWeight = estimatePackagingWeight(keepaData.title || "", keepaData.category || "");
+  const shippingWeight = keepaData.package_weight_g > 0
+    ? keepaData.package_weight_g + packagingWeight
+    : keepaData.weight_g + packagingWeight;
+
+  // サイズカテゴリを判定
+  const totalDimension = (keepaData.package_length_mm || 0) +
+                         (keepaData.package_width_mm || 0) +
+                         (keepaData.package_height_mm || 0);
+  let sizeCategory = "StandardB";
+  if (totalDimension <= 600 && shippingWeight <= 500) {
+    sizeCategory = "StandardA";
+  } else if (totalDimension <= 600 && shippingWeight <= 2000) {
+    sizeCategory = "StandardB";
+  } else if (totalDimension <= 900 && shippingWeight <= 5000) {
+    sizeCategory = "LargeA";
+  } else {
+    sizeCategory = "LargeB";
+  }
+
+  // 為替レート取得
+  const exchangeRate = await getExchangeRate();
+  const effectiveRate = exchangeRate * PAYONEER_EFFECTIVE_RATE;
+
+  // 送料計算
+  const shippingJpy = getSpeedpakRate("US", sizeCategory, shippingWeight);
+
+  // DDP関税計算
+  const dutyRate = DDP_DUTY_RATES[product_category.toLowerCase()] || DDP_DUTY_RATES.default;
+  const dutyUsd = selling_price_usd * dutyRate;
+  const ddpProcessingUsd = dutyUsd * DDP_PROCESSING_FEE_RATE;
+  const ddpJpy = (dutyUsd + ddpProcessingUsd) * exchangeRate;
+
+  // eBay手数料計算
+  const perOrderFee = selling_price_usd > 10 ? EBAY_PER_ORDER_FEE_HIGH : EBAY_PER_ORDER_FEE_LOW;
+  const ebayFeesUsd = selling_price_usd * (EBAY_FVF_RATE + EBAY_INTL_FEE_RATE) + perOrderFee;
+
+  // Payoneer手数料計算
+  const payoneerDepositUsd = selling_price_usd - ebayFeesUsd;
+  const payoneerFeeUsd = payoneerDepositUsd * PAYONEER_FEE_RATE;
+  const netRevenueUsd = payoneerDepositUsd - payoneerFeeUsd;
+
+  // 実際の手取り（円換算、為替スプレッド適用）
+  const actualNetJpy = netRevenueUsd * effectiveRate;
+
+  // 総コスト
+  const totalCostJpy = keepaData.price_jpy + shippingJpy + ddpJpy + CUSTOMS_CLEARANCE_FEE_JPY;
+
+  // 粗利
+  const profitJpy = actualNetJpy - totalCostJpy;
+  const profitRate = actualNetJpy > 0 ? (profitJpy / actualNetJpy) * 100 : 0;
+
+  // SpeedPAK Economy制限チェック
+  const withinLimit = selling_price_usd < 800;
+
+  return {
+    asin,
+    product_name: keepaData.title,
+    brand: keepaData.brand,
+    // 入力値
+    selling_price_usd,
+    product_category,
+    // 商品情報
+    purchase_price_jpy: keepaData.price_jpy,
+    shipping_weight_g: shippingWeight,
+    size_category: sizeCategory,
+    // 粗利計算結果
+    profit_jpy: Math.round(profitJpy),
+    profit_rate: Math.round(profitRate * 10) / 10,
+    // 詳細内訳
+    breakdown: {
+      revenue_usd: selling_price_usd,
+      ebay_fees_usd: Math.round(ebayFeesUsd * 100) / 100,
+      payoneer_fee_usd: Math.round(payoneerFeeUsd * 100) / 100,
+      net_revenue_jpy: Math.round(actualNetJpy),
+      purchase_price_jpy: keepaData.price_jpy,
+      shipping_jpy: shippingJpy,
+      ddp_jpy: Math.round(ddpJpy),
+      customs_fee_jpy: CUSTOMS_CLEARANCE_FEE_JPY,
+      total_cost_jpy: Math.round(totalCostJpy),
+    },
+    exchange_rate: exchangeRate,
+    effective_rate: effectiveRate,
+    // SpeedPAK制限チェック
+    speedpak_economy_ok: withinLimit,
+    warning: !withinLimit ? "⚠️ $800以上のためSpeedPAK Economyは使用できません" : undefined,
+  };
+}
+
+/**
+ * 梱包重量推定ロジック（タイトル・カテゴリから判定）
+ */
+function estimatePackagingWeight(title: string, category: string): number {
+  const text = (title + " " + category).toLowerCase();
+
+  if (text.includes("ceramic") || text.includes("porcelain") ||
+      text.includes("pottery") || text.includes("陶器") || text.includes("磁器")) {
+    return 350; // 厳重梱包
+  }
+  if (text.includes("glass") || text.includes("ガラス")) {
+    return 400; // 厳重梱包
+  }
+  if (text.includes("ironware") || text.includes("cast iron") ||
+      text.includes("鉄器") || text.includes("鋳物")) {
+    return 180; // 標準梱包（金属で重い）
+  }
+  if (text.includes("electronics") || text.includes("electronic") || text.includes("電子")) {
+    return 150; // 標準梱包
+  }
+  if (text.includes("kitchen") || text.includes("キッチン") ||
+      text.includes("plastic") || text.includes("プラスチック")) {
+    return 150; // 標準梱包
+  }
+  if (text.includes("tool") || text.includes("metal") ||
+      text.includes("工具") || text.includes("金属")) {
+    return 80; // 軽量梱包
+  }
+  if (text.includes("clothing") || text.includes("fabric") ||
+      text.includes("衣類") || text.includes("布")) {
+    return 40; // 軽量梱包
+  }
+
+  return 150; // デフォルト（標準梱包）
+}
+
 // ===========================================
 // MCP ツール定義
 // ===========================================
@@ -1226,6 +1378,28 @@ const tools: Tool[] = [
         },
       },
       required: ["purchase_price_jpy", "weight_g", "size_category"],
+    },
+  },
+  {
+    name: "estimate_profit",
+    description: "出品せずに粗利をシミュレーション（リサーチ用）。Amazon URLと販売予定価格を入力すると、粗利計算結果を返します。Keepaから商品情報を取得し、実際の手数料・送料・関税を考慮した正確な粗利を計算します。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        asin_or_url: {
+          type: "string",
+          description: "Amazon URLまたはASIN（例: B0171RU9NW または https://www.amazon.co.jp/dp/B0171RU9NW）",
+        },
+        selling_price_usd: {
+          type: "number",
+          description: "販売予定価格（USD、例: 250.00）",
+        },
+        product_category: {
+          type: "string",
+          description: "商品カテゴリ（DDP関税率決定用: watches=9%, electronics=0%, default=15%等、デフォルト: default）",
+        },
+      },
+      required: ["asin_or_url", "selling_price_usd"],
     },
   },
   {
@@ -1433,6 +1607,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "calculate_price":
         result = await calculatePrice(args as any);
+        break;
+
+      case "estimate_profit":
+        result = await estimateProfit(args as any);
         break;
 
       case "ebay_suggest_category":
