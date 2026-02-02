@@ -11,8 +11,10 @@ Keepa API と eBay API を MCP ツールとして提供します。
 | `keepa_get_product` | Keepa APIで商品情報を取得 |
 | `keepa_get_tokens` | Keepa残りトークン確認 |
 | `calculate_price` | ebay-profit-calculator準拠の価格計算 |
+| `ebay_suggest_category` | eBayカテゴリ自動提案 |
+| `ebay_get_item_aspects` | カテゴリ別必須項目取得 |
 | `ebay_get_policies` | eBayポリシー一覧取得 |
-| `ebay_create_listing` | eBay出品作成 |
+| `ebay_create_listing` | eBay出品作成（SKU自動発行対応） |
 | `ebay_update_quantity` | 在庫数更新 |
 
 ## セットアップ
@@ -106,7 +108,9 @@ Claude が以下を実行：
 1. ASIN抽出 → 商品情報取得
 2. 翻訳・リスティング作成（Claudeが実行）
 3. 価格計算
-4. `ebay_create_listing` で出品
+4. Monitor APIからSKU自動取得（例: SKU-A1B2C3D4）
+5. `ebay_create_listing` で出品
+6. Monitor APIに商品登録（在庫監視開始）
 
 ## 価格計算ロジック
 

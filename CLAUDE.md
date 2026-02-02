@@ -69,7 +69,7 @@ calculate_price（target_profit_rate: 0.15）
 
 ```
 タイトル: [Brand] [Product Type] [Model] Made in Japan（80文字以内）
-SKU: [BRAND]-[MODEL]
+SKU: Monitor APIから自動発行（例: SKU-A1B2C3D4）
 説明文: HTML形式で自動生成
   - カテゴリに応じた説明文テンプレートを使用
   - 食品・化粧品・サプリ・石鹸の場合：

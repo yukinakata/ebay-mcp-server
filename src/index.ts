@@ -104,6 +104,46 @@ const MONITOR_API_KEY = process.env.MONITOR_API_KEY || "";
 // ===========================================
 
 /**
+ * Monitor APIからSKUを自動取得
+ * SKUが指定されていない場合に呼び出し、ユニークなSKUを発行
+ */
+async function generateSkuFromMonitor(): Promise<string | null> {
+  debugLog(`[Monitor API] generateSkuFromMonitor called`);
+
+  if (!MONITOR_API_URL || !MONITOR_API_KEY) {
+    debugLog("[Monitor API] 未設定のため自動SKU生成をスキップ");
+    return null;
+  }
+
+  try {
+    const url = `${MONITOR_API_URL}/api/generate_sku.php?api_key=${encodeURIComponent(MONITOR_API_KEY)}`;
+    debugLog(`[Monitor API] GETting SKU from: ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-API-Key": MONITOR_API_KEY,
+      },
+    });
+
+    const result = await response.json() as any;
+    debugLog(`[Monitor API] Response status: ${response.status}`);
+    debugLog(`[Monitor API] Response body: ${JSON.stringify(result)}`);
+
+    if (response.ok && result.success && result.sku) {
+      debugLog(`[Monitor API] SKU生成成功: ${result.sku}`);
+      return result.sku;
+    } else {
+      debugLog(`[Monitor API] SKU生成失敗: ${result.error || response.statusText}`);
+      return null;
+    }
+  } catch (error: any) {
+    debugLog(`[Monitor API] SKU生成エラー: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Monitor APIに商品を登録
  * 出品成功後に呼び出し、監視システムにデータを送信
  */
@@ -581,7 +621,7 @@ async function ensureInventoryLocation() {
 }
 
 async function ebayCreateListing(params: {
-  sku: string;
+  sku?: string;  // オプショナルに変更（未指定時はMonitor APIから自動取得）
   title: string;
   description: string;
   price_usd: number;
@@ -606,7 +646,7 @@ async function ebayCreateListing(params: {
   // Keepaチェックスキップ
   skip_keepa_check?: boolean;
 }) {
-  const {
+  let {
     sku,
     title,
     description,
@@ -632,6 +672,20 @@ async function ebayCreateListing(params: {
     // Keepaチェックスキップオプション
     skip_keepa_check = false,
   } = params;
+
+  // SKU自動取得（未指定の場合）
+  if (!sku) {
+    debugLog(`[ebayCreateListing] SKU未指定、Monitor APIから自動取得を試みます`);
+    const generatedSku = await generateSkuFromMonitor();
+    if (generatedSku) {
+      sku = generatedSku;
+      debugLog(`[ebayCreateListing] Monitor APIからSKU取得成功: ${sku}`);
+    } else {
+      // フォールバック: タイムスタンプベースのSKU生成
+      sku = `SKU-${Date.now().toString(36).toUpperCase()}`;
+      debugLog(`[ebayCreateListing] フォールバックSKU生成: ${sku}`);
+    }
+  }
 
   // 説明文のサニタイズ（CDATAタグなど不要な文字を除去）
   const sanitizedDescription = description
@@ -1188,13 +1242,13 @@ const tools: Tool[] = [
   },
   {
     name: "ebay_create_listing",
-    description: "eBayに新規出品を作成します（Inventory Item作成 → Offer作成 → 公開）",
+    description: "eBayに新規出品を作成します（Inventory Item作成 → Offer作成 → 公開）。SKU未指定時はMonitor APIから自動発行。",
     inputSchema: {
       type: "object",
       properties: {
         sku: {
           type: "string",
-          description: "商品SKU（ユニーク、例: JP-B0BDHWDR12）",
+          description: "商品SKU（オプショナル。未指定時はMonitor APIから自動発行、例: SKU-A1B2C3D4）",
         },
         title: {
           type: "string",
@@ -1282,7 +1336,7 @@ const tools: Tool[] = [
           description: "trueにするとKeepaによる在庫・配送チェックをスキップ（トークン節約用）",
         },
       },
-      required: ["sku", "title", "description", "price_usd", "category_id"],
+      required: ["title", "description", "price_usd", "category_id"],
     },
   },
   {
