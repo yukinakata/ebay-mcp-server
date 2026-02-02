@@ -1076,79 +1076,71 @@ async function calculatePrice(params: {
     size_category,
     destination = "US",
     category = "default",
-    target_profit_rate = 0.15,
+    target_profit_rate,
   } = params;
 
-  const exchangeRate = await getExchangeRate();
-  const shippingJpy = getSpeedpakRate(destination, size_category, weight_g);
-  const effectiveRate = exchangeRate * PAYONEER_EFFECTIVE_RATE;
-  const dutyRate = DDP_DUTY_RATES[category.toLowerCase()] || DDP_DUTY_RATES.default;
-
-  // 反復計算（Per-order feeと通関手数料を考慮）
-  let priceUsd = 50.0;
-  for (let i = 0; i < 20; i++) {
-    // Per-order fee（金額別）
-    const perOrderFee = priceUsd > 10 ? EBAY_PER_ORDER_FEE_HIGH : EBAY_PER_ORDER_FEE_LOW;
-
-    // DDP費用（関税額に対して2.1%の処理手数料）
-    const dutyUsd = priceUsd * dutyRate;
-    const ddpProcessingUsd = dutyUsd * DDP_PROCESSING_FEE_RATE;
-    const ddpTotalUsd = dutyUsd + ddpProcessingUsd;
-    const ddpJpy = ddpTotalUsd * exchangeRate;
-
-    // 総コスト（通関手数料¥245を含む）
-    const totalCostJpy = purchase_price_jpy + shippingJpy + ddpJpy + CUSTOMS_CLEARANCE_FEE_JPY;
-
-    // 必要な売上（目標粗利率から逆算）
-    const requiredRevenueJpy = totalCostJpy / (1 - target_profit_rate);
-
-    // eBay手数料とPayoneer手数料を考慮した販売価格
-    // 売上 = (販売価格 - eBay手数料 - Per-order fee) × (1 - Payoneer手数料) × 為替実効レート
-    // eBay手数料 = 販売価格 × (FVF + International Fee)
-    const payoneerNetRate = (1 - PAYONEER_FEE_RATE) * effectiveRate;
-    const newPriceUsd = (requiredRevenueJpy / payoneerNetRate + perOrderFee) / (1 - EBAY_FVF_RATE - EBAY_INTL_FEE_RATE);
-
-    if (Math.abs(newPriceUsd - priceUsd) < 0.001) break;  // 精度を0.01→0.001に向上（より正確な15.0%粗利率）
-    priceUsd = newPriceUsd;
+  // Monitor APIに価格計算を委譲（動的粗利率を適用）
+  if (!MONITOR_API_URL || !MONITOR_API_KEY) {
+    throw new Error("MONITOR_API_URL and MONITOR_API_KEY must be configured");
   }
 
-  // 最終価格（計算結果をそのまま使用、小数点以下2桁に丸める）
-  const finalPriceUsd = Math.round(priceUsd * 100) / 100;
+  try {
+    const url = `${MONITOR_API_URL}/api/calculate_selling_price.php`;
+    const requestBody = {
+      purchase_price_jpy,
+      weight_g,
+      size_category,
+      product_category: category,
+      purchase_quantity: 1,
+    };
 
-  // 実際の粗利計算
-  const perOrderFeeFinal = finalPriceUsd > 10 ? EBAY_PER_ORDER_FEE_HIGH : EBAY_PER_ORDER_FEE_LOW;
-  const ebayFeesUsd = finalPriceUsd * (EBAY_FVF_RATE + EBAY_INTL_FEE_RATE) + perOrderFeeFinal;
-  const payoneerDepositUsd = finalPriceUsd - ebayFeesUsd;
-  const payoneerFeeUsd = payoneerDepositUsd * PAYONEER_FEE_RATE;
-  const netRevenueUsd = payoneerDepositUsd - payoneerFeeUsd;
-  // Payoneer手数料（2%）を引いた後、為替スプレッド（2%）を適用
-  const actualNetJpy = netRevenueUsd * effectiveRate;
+    // target_profit_rateが指定されている場合は固定粗利率、指定されていない場合は動的粗利率
+    if (target_profit_rate !== undefined) {
+      (requestBody as any).target_profit_rate = target_profit_rate * 100; // 0.15 → 15
+    }
 
-  // DDP費用
-  const dutyFinalUsd = finalPriceUsd * dutyRate;
-  const ddpProcessingFinalUsd = dutyFinalUsd * DDP_PROCESSING_FEE_RATE;
-  const ddpFinalJpy = (dutyFinalUsd + ddpProcessingFinalUsd) * exchangeRate;
+    debugLog(`[calculatePrice] Calling Monitor API: ${url}`);
+    debugLog(`[calculatePrice] Request: ${JSON.stringify(requestBody)}`);
 
-  // 総コスト
-  const totalCostFinalJpy = purchase_price_jpy + shippingJpy + ddpFinalJpy + CUSTOMS_CLEARANCE_FEE_JPY;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": MONITOR_API_KEY,
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-  // 粗利
-  const profitJpy = actualNetJpy - totalCostFinalJpy;
-  // profitRateは%表示（Monitor側と統一）: 15.0 = 15%
-  const profitRate = actualNetJpy > 0 ? (profitJpy / actualNetJpy) * 100 : 0;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Monitor API error: ${response.status} ${errorText}`);
+    }
 
-  return {
-    selling_price_usd: finalPriceUsd,
-    shipping_jpy: shippingJpy,
-    ddp_jpy: Math.round(ddpFinalJpy),
-    customs_fee_jpy: CUSTOMS_CLEARANCE_FEE_JPY,
-    total_cost_jpy: Math.round(totalCostFinalJpy),
-    estimated_profit_jpy: Math.round(profitJpy),
-    profit_rate: Math.round(profitRate * 10) / 10,  // 小数点1桁（例: 15.2%）
-    exchange_rate: exchangeRate,
-    effective_rate: effectiveRate,
-    ebay_fees_usd: Math.round(ebayFeesUsd * 100) / 100,
-  };
+    const result = (await response.json()) as any;
+    debugLog(`[calculatePrice] Response: ${JSON.stringify(result)}`);
+
+    if (!result.success || !result.selling_price_usd) {
+      throw new Error(`Monitor API returned error: ${result.error || "Unknown error"}`);
+    }
+
+    // Monitor APIのレスポンスをMCP Serverのフォーマットに変換
+    const breakdown = result.breakdown || {};
+    return {
+      selling_price_usd: result.selling_price_usd,
+      shipping_jpy: breakdown.shippingJpy || 0,
+      ddp_jpy: breakdown.ddpCostJpy || 0,
+      customs_fee_jpy: breakdown.customsFeeJpy || 0,
+      total_cost_jpy: breakdown.totalCostJpy || 0,
+      estimated_profit_jpy: result.expected_profit_jpy || 0,
+      profit_rate: result.expected_profit_rate || 0,
+      exchange_rate: breakdown.exchangeRate || 0,
+      effective_rate: (breakdown.exchangeRate || 0) * PAYONEER_EFFECTIVE_RATE,
+      ebay_fees_usd: breakdown.ebayFeesUsd || 0,
+    };
+  } catch (error: any) {
+    debugLog(`[calculatePrice] Error: ${error.message}`);
+    throw new Error(`Failed to calculate price via Monitor API: ${error.message}`);
+  }
 }
 
 /**
