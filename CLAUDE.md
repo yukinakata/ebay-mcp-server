@@ -293,8 +293,19 @@ Features Japanese craftsmanship and attention to detail.
 ```
 ebay_get_policies → ebay_create_listing
 ※ yes/no確認は不要。自動的に出品を実行する。
+※ 必須: asinパラメータを必ず指定する（ASINがSKUとして使用される）
 ※ weight_kg = 発送重量（梱包込み）÷ 1000
 ※ length_cm, width_cm, height_cm = Keepaのパッケージサイズをcmに変換
+
+重要: ebay_create_listingには必ずasinパラメータを渡すこと
+例:
+ebay_create_listing({
+  asin: "B0F1RVQM67",  // ← 必須！
+  title: "...",
+  description: "...",
+  price_usd: 250.00,
+  ...
+})
 ```
 
 ### Step 8: 出品完了表示
