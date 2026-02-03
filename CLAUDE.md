@@ -17,17 +17,20 @@
 ### Step 1-2: 商品情報取得（自動）
 
 ```
-1. ユーザー入力のAmazon URLを変数に保存（重要！）
-2. extract_asin でASINを抽出
-3. keepa_get_product でASINから商品情報を取得
+1. ユーザー入力のAmazon URLからASINを抽出
+2. keepa_get_product でASINから商品情報を取得
+3. ⚠️ 抽出したASINを変数に保存し、Step 7で必ず使用すること
 
 例:
 const amazonUrl = "https://www.amazon.co.jp/dp/B0DVL6MXRX";  // ← ユーザー入力
 const asinResult = await extract_asin(amazonUrl);
-const asin = asinResult.asin;
+const asin = asinResult.asin;  // ← 重要: この変数をStep 7まで保持
 const keepaData = await keepa_get_product(asin);
 
-重要: amazonUrl変数をStep 7のebay_create_listingに渡すこと！
+⚠️ 最重要:
+- asin変数をStep 7のebay_create_listingに「asin」パラメータとして渡すこと
+- ASINを渡さないと、ランダムなSKU（例: WS8M2EU7）が生成される
+- ASINを渡すと、SKU = ASIN（例: B0DVL6MXRX）になる
 ```
 
 ### Step 3: カテゴリ選定（自動）
@@ -310,8 +313,8 @@ Features Japanese craftsmanship and attention to detail.
 ```
 ebay_get_policies → ebay_create_listing
 
-⚠️ 最重要: amazon_url パラメータを必ず指定すること
-  （amazon_url から自動的にASINを抽出し、SKUとして使用される）
+⚠️ 最重要: Step 1-2で保存したasin変数を必ず指定すること
+  （ASINを指定しないと、ランダムなSKUが生成され、監視システムに登録されない）
 
 ※ yes/no確認は不要。自動的に出品を実行する。
 ※ weight_kg = 発送重量（梱包込み）÷ 1000
@@ -321,7 +324,7 @@ ebay_get_policies → ebay_create_listing
 **必須パラメータ:**
 ```javascript
 ebay_create_listing({
-  amazon_url: "https://www.amazon.co.jp/dp/B0DVL6MXRX",  // ← 必須！ASINが自動抽出される
+  asin: asin,  // ← 必須！Step 1-2で保存したASIN変数を必ず渡す
   title: "...",
   description: "...",
   price_usd: 250.00,
@@ -331,14 +334,16 @@ ebay_create_listing({
   length_cm: ...,
   width_cm: ...,
   height_cm: ...,
+  current_price_jpy: keepaData.price_jpy,  // Keepaから取得した価格
+  size_category: "StandardA",  // Step 4で判定したサイズ
   // その他のパラメータ
 })
 ```
 
 **重要:**
-- `amazon_url`を渡すと、URLからASINを自動抽出し、SKU = ASIN（例: B0DVL6MXRX）になる
-- `amazon_url`を渡さないと、タイムスタンプベースのSKU（例: WS8M2EU7）が生成される
-- `amazon_url`と`asin`の両方を渡す場合、`asin`が優先される
+- `asin`パラメータは必須（SKU = ASINとなり、監視システムに登録される）
+- `asin`を渡さないと、エラーまたはランダムなSKU（例: WS8M2EU7）が生成される
+- Step 1-2で`keepa_get_product(asin)`に渡したASINと同じ値を使用すること
 ```
 
 ### Step 8: 出品完了表示

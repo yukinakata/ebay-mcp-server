@@ -730,24 +730,20 @@ async function ebayCreateListing(params: {
 
   debugLog(`[ebayCreateListing] Final ASIN: ${asin || "NONE"}`);
 
-  // SKU決定ロジック（重要: ASINが見つかった時点で必ずSKUとして使用）
+  // SKU決定ロジック（重要: SKU未指定の場合、ASINが必須）
   if (!sku) {
     if (asin) {
       // ASINがある場合は必ずASINをSKUとして使用
       sku = asin;
       debugLog(`[ebayCreateListing] SKU未指定、ASINをSKUとして使用: ${sku}`);
     } else {
-      // ASINもない場合はMonitor APIから取得を試みる
-      debugLog(`[ebayCreateListing] SKU未指定、Monitor APIから自動取得を試みます`);
-      const generatedSku = await generateSkuFromMonitor();
-      if (generatedSku) {
-        sku = generatedSku;
-        debugLog(`[ebayCreateListing] Monitor APIからSKU取得成功: ${sku}`);
-      } else {
-        // フォールバック: タイムスタンプベースのSKU生成
-        sku = Date.now().toString(36).toUpperCase();
-        debugLog(`[ebayCreateListing] フォールバックSKU生成: ${sku}`);
-      }
+      // ASINがない場合はエラー（Monitor登録ができないため）
+      debugLog(`[ebayCreateListing] ERROR: SKUもASINも指定されていません`);
+      return {
+        success: false,
+        error: "出品中止: SKUまたはASINを指定してください。ASINはKeepa APIでの在庫確認と監視システム登録に必須です。",
+        reason: "missing_sku_and_asin",
+      };
     }
   } else {
     // SKUが明示的に指定されている場合でも、ASINがあればログに記録
