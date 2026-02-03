@@ -90,28 +90,38 @@ Item Specifics: ebay_get_item_aspectsの必須項目を埋める
 - 並行輸入品
 - [並行輸入品]
 - （並行輸入品）
+- 国内正規品
+- [国内正規品]
+- （国内正規品）
 - Parallel Import
 - Grey Import
 - Gray Import
 - 正規輸入品
+- 日本製（Made in Japanに置き換える）
 
-**除外例:**
+**除外と置き換えの例:**
 ```
 例1: Amazonタイトルに「日本製」がある場合
 Amazon: ソニー ワイヤレスイヤホン WF-1000XM5 日本製 [並行輸入品]
 eBay:   Sony Wireless Earbuds WF-1000XM5 Made in Japan
 
-例2: Amazonタイトルに「日本製」がない場合
+例2: Amazonタイトルに「国内正規品」がある場合
+Amazon: ソニー ワイヤレスイヤホン WF-1000XM5 国内正規品
+eBay:   Sony Wireless Earbuds WF-1000XM5 JAPAN
+
+例3: Amazonタイトルに「並行輸入品」のみの場合
 Amazon: ソニー ワイヤレスイヤホン WF-1000XM5 [並行輸入品]
 eBay:   Sony Wireless Earbuds WF-1000XM5
-       （説明文に日本製記載があればJapanのみ追加）
+       （何も追加しない）
 ```
 
 **日本製表記の優先順位:**
 
 1. **Amazonタイトルに「日本製」が含まれる場合**:
    ```
-   優先度1: [Made in Japan/Made Japan/Japan] を追加
+   「日本製」を削除 → Made in Japan を追加
+
+   優先度1: Made in Japan を追加
    ├─ 80文字以内に収まる → 使用
    └─ 80文字を超える → 次へ
 
@@ -123,13 +133,25 @@ eBay:   Sony Wireless Earbuds WF-1000XM5
    └─ 必ず80文字以内に収まるよう調整
    ```
 
-2. **Amazonタイトルに「日本製」が含まれない場合**:
+2. **Amazonタイトルに「国内正規品」が含まれる場合**:
    ```
-   Amazon説明文（description）を確認
-   ├─ 「日本製」または「[Made in Japan/Made Japan/Japan]」の記載あり
-   │  └─ Japan のみ追加（80文字以内に調整）
-   └─ 記載なし
-      └─ 日本製表記を追加しない
+   「国内正規品」を削除 → JAPAN を追加
+   └─ 必ず80文字以内に収まるよう調整
+   ```
+
+3. **原産国が日本の場合（Keepaデータの Country of Origin）**:
+   ```
+   優先度1: Made in Japan を追加
+   ├─ 80文字以内に収まる → 使用
+   └─ 80文字を超える → 次へ
+
+   優先度2: Made Japan を追加
+   └─ 必ず80文字以内に収まるよう調整
+   ```
+
+4. **上記のいずれにも該当しない場合**:
+   ```
+   日本製表記を追加しない
    ```
 
 **調整方法:**
