@@ -728,36 +728,10 @@ async function ebayCreateListing(params: {
     }
   }
 
-  debugLog(`[ebayCreateListing] Final ASIN: ${asin || "NONE"}`);
+  debugLog(`[ebayCreateListing] Preliminary ASIN: ${asin || "NONE"}`);
   debugLog(`[ebayCreateListing] Original SKU param: ${sku || "not provided"}`);
 
-  // ⚠️ SKU決定ロジック（最重要: ASINがある場合は常にASINをSKUとして使用）
-  // Claude CodeがSKUを明示的に渡しても、ASINがあればASINを優先する
-  if (asin) {
-    if (sku && sku !== asin) {
-      debugLog(`[ebayCreateListing] SKU指定を無視し、ASINをSKUとして強制使用: ${sku} → ${asin}`);
-    } else if (!sku) {
-      debugLog(`[ebayCreateListing] SKU未指定、ASINをSKUとして使用: ${asin}`);
-    }
-    // ASINがある場合は無条件でSKU = ASIN
-    sku = asin;
-  } else if (!sku) {
-    // ASINもSKUもない場合はエラー（Monitor登録ができないため）
-    debugLog(`[ebayCreateListing] ERROR: SKUもASINも指定されていません`);
-    return {
-      success: false,
-      error: "出品中止: SKUまたはASINを指定してください。ASINはKeepa APIでの在庫確認と監視システム登録に必須です。",
-      reason: "missing_sku_and_asin",
-    };
-  } else {
-    // ASINがなく、SKUのみ指定されている場合（警告）
-    debugLog(`[ebayCreateListing] WARNING: ASINなしでSKU指定: ${sku} (Monitor登録不可)`);
-  }
-
-  debugLog(`[ebayCreateListing] 最終SKU: ${sku}`);
-  if (!asin) {
-    debugLog(`[ebayCreateListing] WARNING: No ASIN available, product will NOT be registered to Monitor!`);
-  }
+  // ⚠️ SKU決定は後で行う（Keepaチェックの後に、確実なASINを使用）
 
   // ============================================
   // 出品前チェック: 在庫・配送日数を確認
@@ -784,6 +758,12 @@ async function ebayCreateListing(params: {
     debugLog(`[ebayCreateListing] Checking stock and shipping for ASIN: ${asin}`);
     try {
       const keepaCheck = await keepaGetProduct(asin);
+
+      // ⚠️ 重要: Keepaから返ってきた確実なASINを使用
+      if (keepaCheck.asin) {
+        asin = keepaCheck.asin;
+        debugLog(`[ebayCreateListing] ASIN confirmed from Keepa API: ${asin}`);
+      }
 
       // Keepaデータを保存（タイトル・価格も含む）
       keepaData = {
@@ -843,6 +823,38 @@ async function ebayCreateListing(params: {
       debugLog(`[ebayCreateListing] WARNING: Keepa check failed, proceeding anyway: ${e}`);
     }
   }
+
+  // ============================================
+  // ⚠️ SKU決定ロジック（Keepaチェックの後に実行）
+  // ============================================
+  // Keepa APIから取得した確実なASINを使ってSKUを設定
+  debugLog(`[ebayCreateListing] === SKU DECISION START ===`);
+  debugLog(`[ebayCreateListing] Current ASIN: ${asin || "NONE"}`);
+  debugLog(`[ebayCreateListing] Current SKU param: ${sku || "NONE"}`);
+
+  if (asin) {
+    // ASINがある場合は、常にASINをSKUとして使用（Claude Codeが渡したSKUは無視）
+    const originalSku = sku;
+    sku = asin;
+    if (originalSku && originalSku !== asin) {
+      debugLog(`[ebayCreateListing] ⚠️ SKU OVERRIDE: ${originalSku} → ${sku} (ASIN優先)`);
+    } else {
+      debugLog(`[ebayCreateListing] ✓ SKU SET: ${sku} (from ASIN)`);
+    }
+  } else if (!sku) {
+    // ASINもSKUもない場合はエラー
+    debugLog(`[ebayCreateListing] ✗ ERROR: No ASIN and no SKU`);
+    return {
+      success: false,
+      error: "出品中止: ASINが取得できませんでした。Amazon URLまたはASINを正しく指定してください。",
+      reason: "missing_asin",
+    };
+  } else {
+    // SKUのみ指定されている場合（ASINなし）
+    debugLog(`[ebayCreateListing] ⚠️ WARNING: Using SKU without ASIN: ${sku} (Monitor登録不可)`);
+  }
+
+  debugLog(`[ebayCreateListing] === FINAL SKU: ${sku} ===`);
 
   // Aspects（Item Specifics）の整形
   const aspects: Record<string, string[]> = {};
