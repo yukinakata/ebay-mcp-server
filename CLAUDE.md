@@ -199,6 +199,70 @@ eBay:   Sony Wireless Earbuds WF-1000XM5
 → 61文字 ✅
 ```
 
+#### ディスクリプション生成の詳細ルール（日本製表記）
+
+**⚠️ 重要: 製品全体がMade in Japanなのか、一部（ムーブメントなど）のみが日本製なのかを明確に区別すること**
+
+トラブル回避のため、Amazonのディスクリプション（商品説明）を確実に読み取り、以下のルールに従ってeBayディスクリプションを生成する:
+
+**1. 製品全体が日本製の場合:**
+
+判定条件:
+- Amazonのディスクリプション（商品説明）に「日本製」が明確に記載されている
+- OR: Keepaデータの Country of Origin が "Japan"
+- AND: ムーブメントのみが日本製という記載がない
+
+eBayディスクリプションの記載:
+```
+✅ "Made in Japan" と記載してOK
+
+例:
+This product is made in Japan with superior quality and craftsmanship.
+Manufactured in Japan using traditional techniques and premium materials.
+```
+
+**2. ムーブメントのみが日本製の場合:**
+
+判定条件:
+- タイトルまたは説明文に「日本製ムーブメント」「Japanese Movement」「Miyota Movement」「Seiko Movement」等が含まれる
+- AND: 製品全体の原産国が日本ではない、または不明
+- OR: 明確に「ムーブメントのみ日本製」と記載されている
+
+eBayディスクリプションの記載（必須フォーマット）:
+```
+⚠️ ムーブメントのみが日本製であることを明確に記載する
+
+例1（腕時計の場合）:
+Movement: Japanese Quartz (made in Japan)
+Case/Band: Assembly country unknown
+
+例2（詳細版）:
+This watch features a high-quality Japanese-made movement for precise timekeeping.
+• Movement: Miyota/Seiko Quartz (made in Japan)
+• Case and band: Assembly country varies
+
+例3（より詳しい場合）:
+Movement: Japanese Quartz movement (Miyota/Seiko, made in Japan)
+Case: Stainless steel (assembly country unknown)
+Band: Leather/Metal (assembly country unknown)
+```
+
+**3. 判定が不明確な場合:**
+```
+❌ "Made in Japan" を記載しない
+✅ 確実な情報のみを記載する
+
+例:
+Manufactured with high-quality Japanese components.
+Features Japanese craftsmanship and attention to detail.
+```
+
+**4. トラブル回避のための禁止事項:**
+- 製品全体が日本製でない場合に "Made in Japan" と記載してはいけない
+- ムーブメントのみが日本製の場合は、必ず部品レベル（"Movement only"）であることを明記する
+- 曖昧な表現（"Japanese quality" だけ等）は避け、具体的に何が日本製なのかを明記する
+- 不明確な記載はeBayポリシー違反やバイヤーからのクレームにつながるため、確実な情報のみを記載する
+
 ### Step 7: 出品実行（自動・確認不要）
 
 ```
