@@ -70,7 +70,7 @@ calculate_price（target_profit_rateは指定しない = 動的粗利率を使�
 
 ```
 タイトル: [Brand] [Product Type] [Model] + 日本製表記（80文字以内、必ず収まるように調整）
-SKU: Monitor APIから自動発行（例: SKU-A1B2C3D4）
+SKU: ASINと同じ値を使用（例: B0171RU9NW）
 説明文: HTML形式で自動生成
   - カテゴリに応じた説明文テンプレートを使用
   - 食品・化粧品・サプリ・石鹸の場合：
