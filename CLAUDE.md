@@ -78,6 +78,10 @@ SKU: ASINと同じ値を使用（例: B0171RU9NW）
     * 成分分析表リンクがあれば追加
     * Precautions・Disclaimer等の必須項目を記載
 Item Specifics: ebay_get_item_aspectsの必須項目を埋める
+  - Country of Origin: 以下のルールで設定
+    * Amazonに原産国の記載がある場合 → その値を使用
+    * Amazonに原産国の記載がなく、ムーブメントが日本製の場合 → Japan
+    * 上記以外 → 未設定
 ```
 
 #### タイトル生成の詳細ルール（80文字制限対応）
@@ -246,6 +250,9 @@ Proudly made in Japan, this product represents the highest standards of Japanese
 - タイトルまたは説明文に「日本製ムーブメント」「Japanese Movement」「Miyota Movement」「Seiko Movement」等が含まれる（タイトル生成ルール4に該当）
 - AND: 製品全体の原産国が日本ではない、または不明
 - OR: 明確に「ムーブメントのみ日本製」と記載されている
+
+**Item Specifics の設定:**
+- **Country of Origin: Japan**（Amazonに原産国の記載がない場合でも、ムーブメントが日本製ならJapanに設定）
 
 eBayディスクリプションの記載（必須フォーマット）:
 ```
