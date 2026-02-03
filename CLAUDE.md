@@ -211,36 +211,48 @@ eBay:   Sony Wireless Earbuds WF-1000XM5
 
 **⚠️ 重要: 製品全体がMade in Japanなのか、一部（ムーブメントなど）のみが日本製なのかを明確に区別すること**
 
+**⚠️ タイトル生成ルールと連動: タイトルに日本製表記を追加した場合は、ディスクリプションにも必ず対応する記載を含めること**
+
 トラブル回避のため、Amazonのディスクリプション（商品説明）を確実に読み取り、以下のルールに従ってeBayディスクリプションを生成する:
 
 **1. 製品全体が日本製の場合:**
 
-判定条件:
-- Amazonのディスクリプション（商品説明）に「日本製」が明確に記載されている
-- OR: Keepaデータの Country of Origin が "Japan"
+判定条件（タイトル生成ルール1, 3に対応）:
+- Amazonタイトルに「日本製」が含まれる（タイトル生成ルール1に該当）
+- OR: Keepaデータの Country of Origin が "Japan"（タイトル生成ルール3に該当）
 - AND: ムーブメントのみが日本製という記載がない
 
-eBayディスクリプションの記載:
+eBayディスクリプションの記載（必須）:
 ```
-✅ "Made in Japan" と記載してOK
+✅ "Made in Japan" と必ず記載する
 
-例:
+例1（基本）:
 This product is made in Japan with superior quality and craftsmanship.
+
+例2（詳細）:
 Manufactured in Japan using traditional techniques and premium materials.
+Proudly made in Japan, this product represents the highest standards of Japanese quality.
+
+例3（商品カテゴリ別）:
+- 陶磁器: Handcrafted in Japan by skilled artisans using centuries-old techniques.
+- 包丁: Forged in Japan with traditional bladesmithing methods passed down through generations.
+- 電子機器: Designed and manufactured in Japan with meticulous attention to detail.
+- 食品: Produced in Japan using authentic Japanese ingredients and methods.
 ```
 
 **2. ムーブメントのみが日本製の場合:**
 
-判定条件:
-- タイトルまたは説明文に「日本製ムーブメント」「Japanese Movement」「Miyota Movement」「Seiko Movement」等が含まれる
+判定条件（タイトル生成ルール4に対応）:
+- タイトルまたは説明文に「日本製ムーブメント」「Japanese Movement」「Miyota Movement」「Seiko Movement」等が含まれる（タイトル生成ルール4に該当）
 - AND: 製品全体の原産国が日本ではない、または不明
 - OR: 明確に「ムーブメントのみ日本製」と記載されている
 
 eBayディスクリプションの記載（必須フォーマット）:
 ```
 ⚠️ ムーブメントのみが日本製であることを明確に記載する
+⚠️ 製品全体が "Made in Japan" という誤解を与えないようにする
 
-例1（腕時計の場合）:
+例1（腕時計の場合・基本フォーマット）:
 Movement: Japanese Quartz (made in Japan)
 Case/Band: Assembly country unknown
 
@@ -253,6 +265,11 @@ This watch features a high-quality Japanese-made movement for precise timekeepin
 Movement: Japanese Quartz movement (Miyota/Seiko, made in Japan)
 Case: Stainless steel (assembly country unknown)
 Band: Leather/Metal (assembly country unknown)
+
+例4（説明文に組み込む場合）:
+Equipped with a reliable Japanese Quartz movement (Miyota, made in Japan),
+this timepiece offers precision and durability. The case and band are assembled
+using quality materials, with assembly country varying by production batch.
 ```
 
 **3. 判定が不明確な場合:**
