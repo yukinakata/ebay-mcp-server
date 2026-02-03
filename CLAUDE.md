@@ -97,8 +97,14 @@ Item Specifics: ebay_get_item_aspectsの必須項目を埋める
 
 **除外例:**
 ```
+例1: Amazonタイトルに「日本製」がある場合
+Amazon: ソニー ワイヤレスイヤホン WF-1000XM5 日本製 [並行輸入品]
+eBay:   Sony Wireless Earbuds WF-1000XM5 Made in Japan
+
+例2: Amazonタイトルに「日本製」がない場合
 Amazon: ソニー ワイヤレスイヤホン WF-1000XM5 [並行輸入品]
-eBay:   Sony Wireless Earbuds WF-1000XM5 [Made in Japan/Made Japan/Japan]
+eBay:   Sony Wireless Earbuds WF-1000XM5
+       （説明文に日本製記載があればJapanのみ追加）
 ```
 
 **日本製表記の優先順位:**
