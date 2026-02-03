@@ -696,22 +696,44 @@ async function ebayCreateListing(params: {
     .replace(/\]\]>/g, "")         // CDATA終了タグを除去
     .trim();
 
-  // ASINの決定: asinパラメータ優先、なければamazon_urlから抽出
+  // ASINの決定: 複数のソースから抽出を試みる
   let asin = asinParam;
   debugLog(`[ebayCreateListing] Initial asin param: ${asinParam || "not provided"}`);
   debugLog(`[ebayCreateListing] amazon_url param: ${amazon_url || "not provided"}`);
 
+  // 1. amazon_urlパラメータからASINを抽出
   if (!asin && amazon_url) {
     asin = extractAsin(amazon_url) || undefined;
-    debugLog(`[ebayCreateListing] Extracted ASIN from URL: ${asin || "failed"}`);
+    debugLog(`[ebayCreateListing] Extracted ASIN from amazon_url param: ${asin || "failed"}`);
+  }
+
+  // 2. それでもASINがない場合、title と description の中からAmazon URLを探す
+  if (!asin) {
+    const searchText = `${title} ${description}`;
+    // Amazon.co.jp の URL パターンをマッチ
+    const urlPatterns = [
+      /amazon\.co\.jp\/.*?\/dp\/([A-Z0-9]{10})/i,
+      /amazon\.co\.jp\/dp\/([A-Z0-9]{10})/i,
+      /amazon\.co\.jp\/.*?\/product\/([A-Z0-9]{10})/i,
+      /amazon\.co\.jp\/gp\/product\/([A-Z0-9]{10})/i,
+    ];
+
+    for (const pattern of urlPatterns) {
+      const match = searchText.match(pattern);
+      if (match && match[1]) {
+        asin = match[1].toUpperCase();
+        debugLog(`[ebayCreateListing] Extracted ASIN from title/description: ${asin}`);
+        break;
+      }
+    }
   }
 
   debugLog(`[ebayCreateListing] Final ASIN: ${asin || "NONE"}`);
 
-  // SKU決定ロジック（重要な変更：ASINを優先使用）
+  // SKU決定ロジック（重要: ASINが見つかった時点で必ずSKUとして使用）
   if (!sku) {
     if (asin) {
-      // ASINがある場合はASINをSKUとして使用（推奨）
+      // ASINがある場合は必ずASINをSKUとして使用
       sku = asin;
       debugLog(`[ebayCreateListing] SKU未指定、ASINをSKUとして使用: ${sku}`);
     } else {
@@ -727,6 +749,9 @@ async function ebayCreateListing(params: {
         debugLog(`[ebayCreateListing] フォールバックSKU生成: ${sku}`);
       }
     }
+  } else {
+    // SKUが明示的に指定されている場合でも、ASINがあればログに記録
+    debugLog(`[ebayCreateListing] SKU明示指定: ${sku}${asin ? ` (ASIN: ${asin})` : ""}`);
   }
 
   debugLog(`[ebayCreateListing] 最終SKU: ${sku}`);
