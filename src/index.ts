@@ -729,25 +729,29 @@ async function ebayCreateListing(params: {
   }
 
   debugLog(`[ebayCreateListing] Final ASIN: ${asin || "NONE"}`);
+  debugLog(`[ebayCreateListing] Original SKU param: ${sku || "not provided"}`);
 
-  // SKU決定ロジック（重要: SKU未指定の場合、ASINが必須）
-  if (!sku) {
-    if (asin) {
-      // ASINがある場合は必ずASINをSKUとして使用
-      sku = asin;
-      debugLog(`[ebayCreateListing] SKU未指定、ASINをSKUとして使用: ${sku}`);
-    } else {
-      // ASINがない場合はエラー（Monitor登録ができないため）
-      debugLog(`[ebayCreateListing] ERROR: SKUもASINも指定されていません`);
-      return {
-        success: false,
-        error: "出品中止: SKUまたはASINを指定してください。ASINはKeepa APIでの在庫確認と監視システム登録に必須です。",
-        reason: "missing_sku_and_asin",
-      };
+  // ⚠️ SKU決定ロジック（最重要: ASINがある場合は常にASINをSKUとして使用）
+  // Claude CodeがSKUを明示的に渡しても、ASINがあればASINを優先する
+  if (asin) {
+    if (sku && sku !== asin) {
+      debugLog(`[ebayCreateListing] SKU指定を無視し、ASINをSKUとして強制使用: ${sku} → ${asin}`);
+    } else if (!sku) {
+      debugLog(`[ebayCreateListing] SKU未指定、ASINをSKUとして使用: ${asin}`);
     }
+    // ASINがある場合は無条件でSKU = ASIN
+    sku = asin;
+  } else if (!sku) {
+    // ASINもSKUもない場合はエラー（Monitor登録ができないため）
+    debugLog(`[ebayCreateListing] ERROR: SKUもASINも指定されていません`);
+    return {
+      success: false,
+      error: "出品中止: SKUまたはASINを指定してください。ASINはKeepa APIでの在庫確認と監視システム登録に必須です。",
+      reason: "missing_sku_and_asin",
+    };
   } else {
-    // SKUが明示的に指定されている場合でも、ASINがあればログに記録
-    debugLog(`[ebayCreateListing] SKU明示指定: ${sku}${asin ? ` (ASIN: ${asin})` : ""}`);
+    // ASINがなく、SKUのみ指定されている場合（警告）
+    debugLog(`[ebayCreateListing] WARNING: ASINなしでSKU指定: ${sku} (Monitor登録不可)`);
   }
 
   debugLog(`[ebayCreateListing] 最終SKU: ${sku}`);
