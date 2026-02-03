@@ -84,6 +84,23 @@ Item Specifics: ebay_get_item_aspectsの必須項目を埋める
 
 **重要: タイトルは必ず80文字以内に収め、途中で切れないようにする**
 
+**タイトルから除外する文字列:**
+
+以下の文字列はAmazonタイトルに含まれていても、eBayタイトルには含めない:
+- 並行輸入品
+- [並行輸入品]
+- （並行輸入品）
+- Parallel Import
+- Grey Import
+- Gray Import
+- 正規輸入品
+
+**除外例:**
+```
+Amazon: ソニー ワイヤレスイヤホン WF-1000XM5 [並行輸入品]
+eBay:   Sony Wireless Earbuds WF-1000XM5 [Made in Japan/Made Japan/Japan]
+```
+
 **日本製表記の優先順位:**
 
 1. **Amazonタイトルに「日本製」が含まれる場合**:
