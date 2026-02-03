@@ -678,20 +678,6 @@ async function ebayCreateListing(params: {
     skip_keepa_check = false,
   } = params;
 
-  // SKU自動取得（未指定の場合）
-  if (!sku) {
-    debugLog(`[ebayCreateListing] SKU未指定、Monitor APIから自動取得を試みます`);
-    const generatedSku = await generateSkuFromMonitor();
-    if (generatedSku) {
-      sku = generatedSku;
-      debugLog(`[ebayCreateListing] Monitor APIからSKU取得成功: ${sku}`);
-    } else {
-      // フォールバック: タイムスタンプベースのSKU生成
-      sku = Date.now().toString(36).toUpperCase();
-      debugLog(`[ebayCreateListing] フォールバックSKU生成: ${sku}`);
-    }
-  }
-
   // 価格制限チェック: SpeedPAK Economyは$800未満のみ対応
   if (price_usd >= 800) {
     debugLog(`[ebayCreateListing] BLOCKED: Price $${price_usd} exceeds $800 SpeedPAK Economy limit`);
@@ -710,25 +696,40 @@ async function ebayCreateListing(params: {
     .replace(/\]\]>/g, "")         // CDATA終了タグを除去
     .trim();
 
-  // ASINの決定: asinパラメータ優先、なければamazon_urlから抽出、さらにSKUから抽出を試みる
+  // ASINの決定: asinパラメータ優先、なければamazon_urlから抽出
   let asin = asinParam;
   debugLog(`[ebayCreateListing] Initial asin param: ${asinParam || "not provided"}`);
   debugLog(`[ebayCreateListing] amazon_url param: ${amazon_url || "not provided"}`);
-  debugLog(`[ebayCreateListing] sku param: ${sku}`);
 
   if (!asin && amazon_url) {
     asin = extractAsin(amazon_url) || undefined;
     debugLog(`[ebayCreateListing] Extracted ASIN from URL: ${asin || "failed"}`);
   }
-  // SKUにASINが含まれている場合も抽出（例: JP-B0BDHWDR12 → B0BDHWDR12）
-  if (!asin && sku) {
-    const skuAsinMatch = sku.match(/[A-Z0-9]{10}/i);
-    if (skuAsinMatch) {
-      asin = skuAsinMatch[0].toUpperCase();
-      debugLog(`[ebayCreateListing] Extracted ASIN from SKU: ${asin}`);
+
+  debugLog(`[ebayCreateListing] Final ASIN: ${asin || "NONE"}`);
+
+  // SKU決定ロジック（重要な変更：ASINを優先使用）
+  if (!sku) {
+    if (asin) {
+      // ASINがある場合はASINをSKUとして使用（推奨）
+      sku = asin;
+      debugLog(`[ebayCreateListing] SKU未指定、ASINをSKUとして使用: ${sku}`);
+    } else {
+      // ASINもない場合はMonitor APIから取得を試みる
+      debugLog(`[ebayCreateListing] SKU未指定、Monitor APIから自動取得を試みます`);
+      const generatedSku = await generateSkuFromMonitor();
+      if (generatedSku) {
+        sku = generatedSku;
+        debugLog(`[ebayCreateListing] Monitor APIからSKU取得成功: ${sku}`);
+      } else {
+        // フォールバック: タイムスタンプベースのSKU生成
+        sku = Date.now().toString(36).toUpperCase();
+        debugLog(`[ebayCreateListing] フォールバックSKU生成: ${sku}`);
+      }
     }
   }
-  debugLog(`[ebayCreateListing] Final ASIN: ${asin || "NONE - Monitor API will NOT be called"}`);
+
+  debugLog(`[ebayCreateListing] 最終SKU: ${sku}`);
   if (!asin) {
     debugLog(`[ebayCreateListing] WARNING: No ASIN available, product will NOT be registered to Monitor!`);
   }
