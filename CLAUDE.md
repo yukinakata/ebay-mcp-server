@@ -17,7 +17,13 @@
 ### Step 1-2: 商品情報取得（自動）
 
 ```
-extract_asin → keepa_get_product
+1. extract_asin でASINを抽出 → 変数に保存（重要！）
+2. keepa_get_product でASINから商品情報を取得
+
+例:
+const asinResult = await extract_asin(url);
+const asin = asinResult.asin;  // ← この値をStep 7で使用！
+const keepaData = await keepa_get_product(asin);
 ```
 
 ### Step 3: カテゴリ選定（自動）
@@ -299,20 +305,33 @@ Features Japanese craftsmanship and attention to detail.
 
 ```
 ebay_get_policies → ebay_create_listing
+
+⚠️ 最重要: asinパラメータを必ず指定すること
 ※ yes/no確認は不要。自動的に出品を実行する。
-※ 必須: asinパラメータを必ず指定する（ASINがSKUとして使用される）
 ※ weight_kg = 発送重量（梱包込み）÷ 1000
 ※ length_cm, width_cm, height_cm = Keepaのパッケージサイズをcmに変換
+```
 
-重要: ebay_create_listingには必ずasinパラメータを渡すこと
-例:
+**必須パラメータ:**
+```javascript
 ebay_create_listing({
-  asin: "B0F1RVQM67",  // ← 必須！
+  asin: asin,  // ← Step 1-2で取得したASIN変数を必ず渡す！
   title: "...",
   description: "...",
   price_usd: 250.00,
-  ...
+  category_id: "...",
+  images: [...],
+  weight_kg: ...,
+  length_cm: ...,
+  width_cm: ...,
+  height_cm: ...,
+  // その他のパラメータ
 })
+```
+
+**重要:**
+- `asin`を渡さないと、タイムスタンプベースのSKU（例: ZL7U5DXP）が生成される
+- `asin`を渡すと、SKU = ASIN（例: B0DVL6MXRX）になる
 ```
 
 ### Step 8: 出品完了表示
