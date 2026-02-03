@@ -69,7 +69,7 @@ calculate_price（target_profit_rateは指定しない = 動的粗利率を使�
 ### Step 6: リスティング作成（自動）
 
 ```
-タイトル: [Brand] [Product Type] [Model] Made in Japan（80文字以内）
+タイトル: [Brand] [Product Type] [Model] + 日本製表記（80文字以内、必ず収まるように調整）
 SKU: Monitor APIから自動発行（例: SKU-A1B2C3D4）
 説明文: HTML形式で自動生成
   - カテゴリに応じた説明文テンプレートを使用
@@ -78,6 +78,55 @@ SKU: Monitor APIから自動発行（例: SKU-A1B2C3D4）
     * 成分分析表リンクがあれば追加
     * Precautions・Disclaimer等の必須項目を記載
 Item Specifics: ebay_get_item_aspectsの必須項目を埋める
+```
+
+#### タイトル生成の詳細ルール（80文字制限対応）
+
+**重要: タイトルは必ず80文字以内に収め、途中で切れないようにする**
+
+**日本製表記の優先順位:**
+
+1. **Amazonタイトルに「日本製」が含まれる場合**:
+   ```
+   優先度1: [Made in Japan/Made Japan/Japan] を追加
+   ├─ 80文字以内に収まる → 使用
+   └─ 80文字を超える → 次へ
+
+   優先度2: Made Japan を追加
+   ├─ 80文字以内に収まる → 使用
+   └─ 80文字を超える → 次へ
+
+   優先度3: Japan を追加
+   └─ 必ず80文字以内に収まるよう調整
+   ```
+
+2. **Amazonタイトルに「日本製」が含まれない場合**:
+   ```
+   Amazon説明文（description）を確認
+   ├─ 「日本製」または「[Made in Japan/Made Japan/Japan]」の記載あり
+   │  └─ Japan のみ追加（80文字以内に調整）
+   └─ 記載なし
+      └─ 日本製表記を追加しない
+   ```
+
+**調整方法:**
+- タイトルが長すぎる場合は、不要な修飾語を削除
+- 型番や詳細情報を優先し、説明的な単語を削る
+- 最終的に必ず80文字ちょうどまたは以下に収める
+
+**例:**
+```
+元: Sony Professional XYZ-123 High Quality Wireless Bluetooth Speaker System [Made in Japan/Made Japan/Japan]
+長い: 82文字 → 超過
+
+調整1: Sony XYZ-123 Professional Wireless Bluetooth Speaker System [Made in Japan/Made Japan/Japan]
+→ 77文字 ✅
+
+調整2（それでも長い場合）: Sony XYZ-123 Wireless Bluetooth Speaker System Made Japan
+→ 68文字 ✅
+
+調整3（さらに長い場合）: Sony XYZ-123 Wireless Bluetooth Speaker System Japan
+→ 61文字 ✅
 ```
 
 ### Step 7: 出品実行（自動・確認不要）
@@ -252,7 +301,7 @@ function estimatePackagingWeight(title, category) {
 
 ### 南部鉄器（Nambu Ironware）
 ```
-タイトル: [Brand] Nambu Ironware [Type] [Model] [Pattern] [Color] [Size] Made in Japan
+タイトル: [Brand] Nambu Ironware [Type] [Model] [Pattern] [Color] [Size] [Made in Japan/Made Japan/Japan]
 
 説明文イントロ（必須）:
 Iwachu, established in 1902, is one of Japan's premier Nambu ironware manufacturers
@@ -268,7 +317,7 @@ Item Specifics:
 
 ### 陶磁器（Ceramics）
 ```
-タイトル: [Brand] [Type] [Pattern/Style] [Size] Japanese [Region] Ware Made in Japan
+タイトル: [Brand] [Type] [Pattern/Style] [Size] Japanese [Region] Ware [Made in Japan/Made Japan/Japan]
 
 説明文イントロ（必須）:
 Handcrafted in Japan using centuries-old techniques, this exquisite piece represents
@@ -283,7 +332,7 @@ Item Specifics:
 
 ### 包丁（Japanese Knives）
 ```
-タイトル: [Brand] [Type] [Steel Type] [Blade Length]mm Japanese Kitchen Knife Made in Japan
+タイトル: [Brand] [Type] [Steel Type] [Blade Length]mm Japanese Kitchen Knife [Made in Japan/Made Japan/Japan]
 
 説明文イントロ（必須）:
 Forged in [Region], Japan, this knife exemplifies the legendary sharpness and
@@ -298,7 +347,7 @@ Item Specifics:
 
 ### 食品（Foods & Beverages）
 ```
-タイトル: [Brand] [Product Name] [Type] [Weight/Volume] Japanese [Feature] Made in Japan
+タイトル: [Brand] [Product Name] [Type] [Weight/Volume] Japanese [Feature] [Made in Japan/Made Japan/Japan]
 
 説明文イントロ（必須）:
 Authentic Japanese [product type] crafted with premium ingredients and traditional methods.
@@ -320,7 +369,7 @@ Item Specifics:
 
 ### 化粧品・スキンケア（Cosmetics & Skincare）
 ```
-タイトル: [Brand] [Product Name] [Type] [Volume/Weight] Japanese [Key Ingredient] Made in Japan
+タイトル: [Brand] [Product Name] [Type] [Volume/Weight] Japanese [Key Ingredient] [Made in Japan/Made Japan/Japan]
 
 説明文イントロ（必須）:
 Premium Japanese skincare formulated with [key ingredients] for [benefit].
@@ -344,7 +393,7 @@ Item Specifics:
 
 ### サプリメント（Health Supplements）
 ```
-タイトル: [Brand] [Ingredient Name] [Form] [Quantity] Japanese Supplement Made in Japan
+タイトル: [Brand] [Ingredient Name] [Form] [Quantity] Japanese Supplement [Made in Japan/Made Japan/Japan]
 
 説明文イントロ（必須）:
 Premium Japanese dietary supplement featuring [main ingredient] to support [health benefit].
@@ -368,7 +417,7 @@ Item Specifics:
 
 ### 石鹸・バス用品（Soaps & Bath Products）
 ```
-タイトル: [Brand] [Type] Soap [Key Ingredient] [Weight] Japanese Made in Japan
+タイトル: [Brand] [Type] Soap [Key Ingredient] [Weight] Japanese [Made in Japan/Made Japan/Japan]
 
 説明文イントロ（必須）:
 Handcrafted Japanese soap made with natural ingredients including [key ingredient].
