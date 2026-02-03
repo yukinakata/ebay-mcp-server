@@ -17,13 +17,17 @@
 ### Step 1-2: 商品情報取得（自動）
 
 ```
-1. extract_asin でASINを抽出 → 変数に保存（重要！）
-2. keepa_get_product でASINから商品情報を取得
+1. ユーザー入力のAmazon URLを変数に保存（重要！）
+2. extract_asin でASINを抽出
+3. keepa_get_product でASINから商品情報を取得
 
 例:
-const asinResult = await extract_asin(url);
-const asin = asinResult.asin;  // ← この値をStep 7で使用！
+const amazonUrl = "https://www.amazon.co.jp/dp/B0DVL6MXRX";  // ← ユーザー入力
+const asinResult = await extract_asin(amazonUrl);
+const asin = asinResult.asin;
 const keepaData = await keepa_get_product(asin);
+
+重要: amazonUrl変数をStep 7のebay_create_listingに渡すこと！
 ```
 
 ### Step 3: カテゴリ選定（自動）
@@ -306,7 +310,9 @@ Features Japanese craftsmanship and attention to detail.
 ```
 ebay_get_policies → ebay_create_listing
 
-⚠️ 最重要: asinパラメータを必ず指定すること
+⚠️ 最重要: amazon_url パラメータを必ず指定すること
+  （amazon_url から自動的にASINを抽出し、SKUとして使用される）
+
 ※ yes/no確認は不要。自動的に出品を実行する。
 ※ weight_kg = 発送重量（梱包込み）÷ 1000
 ※ length_cm, width_cm, height_cm = Keepaのパッケージサイズをcmに変換
@@ -315,7 +321,7 @@ ebay_get_policies → ebay_create_listing
 **必須パラメータ:**
 ```javascript
 ebay_create_listing({
-  asin: asin,  // ← Step 1-2で取得したASIN変数を必ず渡す！
+  amazon_url: "https://www.amazon.co.jp/dp/B0DVL6MXRX",  // ← 必須！ASINが自動抽出される
   title: "...",
   description: "...",
   price_usd: 250.00,
@@ -330,8 +336,9 @@ ebay_create_listing({
 ```
 
 **重要:**
-- `asin`を渡さないと、タイムスタンプベースのSKU（例: ZL7U5DXP）が生成される
-- `asin`を渡すと、SKU = ASIN（例: B0DVL6MXRX）になる
+- `amazon_url`を渡すと、URLからASINを自動抽出し、SKU = ASIN（例: B0DVL6MXRX）になる
+- `amazon_url`を渡さないと、タイムスタンプベースのSKU（例: WS8M2EU7）が生成される
+- `amazon_url`と`asin`の両方を渡す場合、`asin`が優先される
 ```
 
 ### Step 8: 出品完了表示
