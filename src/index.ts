@@ -301,7 +301,7 @@ async function keepaGetProduct(asin: string) {
   else if (current[10] && current[10] > 0) priceJpy = current[10]; // マーケットプレイス新品
 
   // 在庫数を取得
-  // stockCount: null=データなし, -1=在庫あり(数量不明), 0=在庫切れ, 1+=在庫数
+  // stockCount: null=データなし, -1=数量不明（購入不可の可能性）, 0=在庫切れ, 1+=在庫数
   let stockCount: number | null = null;
   const hasLiveOffers = product.liveOffersOrder && product.liveOffersOrder.length > 0;
 
@@ -321,14 +321,14 @@ async function keepaGetProduct(asin: string) {
         }
       }
     }
-    // stockCSVがなくてもliveOffersOrderにオファーがあれば在庫あり
-    // 価格が取得できている場合も在庫ありとみなす（current[1] or current[10]）
+    // stockCSVがなくてもliveOffersOrderにオファーがあれば数量不明
+    // 価格が取得できている場合も数量不明とみなす（current[1] or current[10]）
     if (stockCount === null && hasLiveOffers) {
-      stockCount = -1; // 在庫あり（数量不明）
+      stockCount = -1; // 数量不明（購入不可の可能性あり）
     }
   }
 
-  // 価格が取得できている場合は在庫あり（数量不明）とみなす
+  // 価格が取得できている場合は数量不明とみなす（購入可否は不明）
   if (stockCount === null && (current[1] > 0 || current[10] > 0)) {
     stockCount = -1;
   }
@@ -377,14 +377,14 @@ async function keepaGetProduct(asin: string) {
   }
 
   // ステータス判定
-  // stockCount: null=データなし, -1=在庫あり(数量不明), 0=在庫切れ, 1+=在庫数
+  // stockCount: null=データなし, -1=数量不明（購入不可の可能性）, 0=在庫切れ, 1+=在庫数
   let status = "正常";
   if (stockCount === null) {
     status = "データなし";
   } else if (stockCount === 0) {
     status = "在庫切れ";
   } else if (stockCount === -1) {
-    status = "正常"; // 在庫あり（数量不明）
+    status = "数量不明⚠️"; // 購入不可の可能性あり
   } else if (stockCount === 1) {
     status = "ラスト1点";
   } else if (shippingDaysMax !== null && shippingDaysMax > 2) {
@@ -774,8 +774,21 @@ async function ebayCreateListing(params: {
         status: keepaCheck.status,
       };
 
-      // 在庫チェック（価格が取得できない場合のみブロック）
-      // stock_count=0でも価格があれば在庫ありとみなす
+      // 在庫チェック（厳格化：stock_count = -1 もブロック）
+      // stock_count: null=データなし, -1=数量不明（購入不可の可能性）, 0=在庫切れ, 1+=在庫数
+      if (keepaCheck.stock_count === 0 || keepaCheck.stock_count === -1) {
+        const reason = keepaCheck.stock_count === 0 ? "在庫切れ" : "在庫数量不明（購入不可の可能性）";
+        debugLog(`[ebayCreateListing] BLOCKED: Stock unavailable (stock_count: ${keepaCheck.stock_count})`);
+        return {
+          success: false,
+          error: `⚠️ 出品中止: この商品は${reason}です（stock_count: ${keepaCheck.stock_count}）。\n\nAmazonページを確認してカートに入れられるか確認してください。\n購入可能であれば、再度URLを入力してください。`,
+          reason: "out_of_stock",
+          asin: asin,
+          stock_count: keepaCheck.stock_count,
+        };
+      }
+
+      // 価格チェック
       if (!keepaCheck.price_jpy || keepaCheck.price_jpy <= 0) {
         debugLog(`[ebayCreateListing] BLOCKED: No price available (price: ${keepaCheck.price_jpy})`);
         return {
