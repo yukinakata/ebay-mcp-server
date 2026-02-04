@@ -361,6 +361,10 @@ async function keepaGetProduct(asin: string) {
     // Primeの場合、shippingDelayがなくても0-2日と推定
     shippingDaysMin = 0;
     shippingDaysMax = 2;
+  } else {
+    // 非Primeの場合、shippingDelayがなければ3-7日と推定
+    shippingDaysMin = 3;
+    shippingDaysMax = 7;
   }
 
   // 画像URL
