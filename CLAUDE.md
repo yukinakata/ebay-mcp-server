@@ -18,11 +18,18 @@
 
 ```
 1. ユーザー入力のAmazon URLからASINを抽出
-2. keepa_get_product でASINから商品情報を取得
-3. ⚠️ 抽出したASINを変数に保存し、Step 7で必ず使用すること
+2. ユーザー入力に「Japan」が含まれるかチェック → 含まれていれば原産国＝日本として扱う
+3. keepa_get_product でASINから商品情報を取得
+4. ⚠️ 抽出したASINを変数に保存し、Step 7で必ず使用すること
+
+⚠️ ユーザー指定の原産国（重要）:
+- ユーザーがURLと共に「Japan」と入力した場合（例: "https://...B0BZCLWSLB Japan"）
+  → Keepaの countryOfOrigin に関わらず、原産国＝日本として扱う
+  → タイトル・ディスクリプションにMade in Japanルール（ルール1）を適用する
 
 例:
 const amazonUrl = "https://www.amazon.co.jp/dp/B0DVL6MXRX";  // ← ユーザー入力
+const userSpecifiedJapan = true;  // ← ユーザーが「Japan」と入力した場合
 const asinResult = await extract_asin(amazonUrl);
 const asin = asinResult.asin;  // ← 重要: この変数をStep 7まで保持
 const keepaData = await keepa_get_product(asin);
@@ -138,9 +145,11 @@ eBay:   Sony Wireless Earbuds WF-1000XM5
 
 ⚠️ **重複回避ルール: 以下の優先順位で判定し、上位のルールが適用された場合は下位のルールを適用しない**
 
-1. **Amazonタイトルに「日本製」が含まれる場合**（最優先）:
+1. **Amazonタイトルに「日本製」が含まれる場合、またはユーザーが「Japan」と指定した場合**（最優先）:
    ```
-   「日本製」を削除 → Made in Japan を追加
+   以下のいずれかに該当:
+   - Amazonタイトルに「日本製」が含まれる → 「日本製」を削除
+   - ユーザーがURLと共に「Japan」と入力した（例: "https://...B0BZCLWSLB Japan"）
 
    優先度1: Made in Japan を追加
    ├─ 80文字以内に収まる → 使用
@@ -189,15 +198,7 @@ eBay:   Sony Wireless Earbuds WF-1000XM5
    - Miyota Movement（ミヨタ = シチズン系の日本製ムーブメント）
    - Seiko Movement
 
-   優先度1: Made in Japan を追加
-   ├─ 80文字以内に収まる → 使用
-   └─ 80文字を超える → 次へ
-
-   優先度2: Made Japan を追加
-   ├─ 80文字以内に収まる → 使用
-   └─ 80文字を超える → 次へ
-
-   優先度3: Japan を追加
+   JAPAN のみを追加（Made in Japan は使わない）
    └─ 必ず80文字以内に収まるよう調整
    ```
 
@@ -240,8 +241,12 @@ eBay:   Sony Wireless Earbuds WF-1000XM5
 - Amazonタイトルまたは説明文に「日本製」が含まれる
 - OR: Amazonタイトルまたは説明文に「Made in Japan」が含まれる
 - OR: Amazonの「原産国」が「日本」または「Japan」
-- OR: Keepaデータの Country of Origin が "Japan"
+- OR: Keepaデータの countryOfOrigin が "日本" または "Japan"
+- OR: **ユーザーがURLと共に「Japan」と入力した**
 - AND: ムーブメントのみが日本製という記載がない
+
+⚠️ **最重要: 上記いずれかに該当すれば、他の条件に関わらず必ずこのルール1を適用する。**
+ムーブメントが日本製であっても、原産国が日本であれば「Made in Japan」（製品全体）として記載し、ルール3（ムーブメントのみ）は適用しない。
 
 eBayディスクリプションの記載（必須）:
 ```
@@ -284,8 +289,10 @@ sourced directly from authorized retailers in Japan.</p>
 
 判定条件（タイトル生成ルール4に対応）:
 - タイトルまたは説明文に「日本製ムーブメント」「Japanese Movement」「Miyota Movement」「Seiko Movement」等が含まれる（タイトル生成ルール4に該当）
-- AND: 製品全体の原産国が日本ではない、または不明
+- AND: Keepaの countryOfOrigin が日本以外の国名（例: China, Malaysia等）であるか、null かつ他に日本製の根拠がない
 - OR: 明確に「ムーブメントのみ日本製」と記載されている
+
+⚠️ **countryOfOrigin が「日本」「Japan」の場合は、このルール3ではなくルール1（製品全体がMade in Japan）を適用すること。**
 
 **Item Specifics の設定:**
 - **Country of Origin: Japan**（以下のいずれかに該当すればJapan: ①Amazonに原産国「日本」の記載あり ②タイトルに「国内正規品」あり ③ムーブメントが日本製）

@@ -296,12 +296,47 @@ async function keepaGetProduct(asin: string) {
 
   const product = data.products[0];
 
-  // 価格取得（Amazon本体 or マーケットプレイス新品）
+  // 価格取得（Prime価格優先）
+  // FBA(current[10]) ≠ 必ずPrime → offers内のisPrimeフラグを直接チェック
+  // offerCSVは価格履歴 [time,price,shipping,...] → 最新価格は末尾から2番目
   let priceJpy: number | null = null;
   const stats = product.stats || {};
   const current = stats.current || [];
-  if (current[1] && current[1] > 0) priceJpy = current[1]; // Amazon本体価格
-  else if (current[10] && current[10] > 0) priceJpy = current[10]; // マーケットプレイス新品
+  const amazonDirectPrice = (current[0] && current[0] > 0) ? current[0] : null; // Amazon本体（常にPrime）
+
+  // 1. offers配列からisPrime=true または isAmazon=true の最安値を探す
+  let bestPrimePrice: number | null = null;
+  if (product.offers && product.liveOffersOrder) {
+    for (const idx of product.liveOffersOrder) {
+      const offer = product.offers[idx];
+      if (!offer?.offerCSV || offer.offerCSV.length < 3) continue;
+      // offerCSV = [time, price, shipping, time, price, shipping, ...] → 最新価格は末尾から2番目
+      const offerPrice = offer.offerCSV[offer.offerCSV.length - 2];
+      if (offerPrice <= 0) continue;
+      if (offer.isPrime || offer.isAmazon) {
+        if (bestPrimePrice === null || offerPrice < bestPrimePrice) {
+          bestPrimePrice = offerPrice;
+        }
+      }
+    }
+  }
+
+  // 2. Amazon本体価格(current[0])とoffers内Prime最安値を比較、安い方を選択
+  if (amazonDirectPrice && bestPrimePrice) {
+    priceJpy = Math.min(amazonDirectPrice, bestPrimePrice);
+  } else if (amazonDirectPrice) {
+    priceJpy = amazonDirectPrice;
+  } else if (bestPrimePrice) {
+    priceJpy = bestPrimePrice;
+  }
+
+  // 3. Prime価格が取得できない場合、current[10](FBA)にフォールバック
+  if (!priceJpy && current[10] && current[10] > 0) {
+    priceJpy = current[10];
+  }
+
+  // 4. それでも取得できない場合、全新品最安値(current[1])にフォールバック
+  if (!priceJpy && current[1] && current[1] > 0) priceJpy = current[1];
 
   // 在庫数を取得
   // stockCount: null=データなし, -1=在庫あり(数量不明), 0=在庫切れ, 1+=在庫数
@@ -343,11 +378,12 @@ async function keepaGetProduct(asin: string) {
   }
 
   // Prime対応チェック（配送日数より先に判定）
+  // Amazon本体(isAmazon)は常にPrime扱い（KeepaのisPrimeフラグが未設定でも）
   let isPrime = false;
   if (product.offers && product.liveOffersOrder) {
     for (const idx of product.liveOffersOrder) {
       const offer = product.offers[idx];
-      if (offer?.isPrime) {
+      if (offer?.isPrime || offer?.isAmazon) {
         isPrime = true;
         break;
       }
@@ -425,6 +461,7 @@ async function keepaGetProduct(asin: string) {
     color: product.color || null,
     size: product.size || null,
     materials: product.materials || [],
+    countryOfOrigin: product.countryOfOrigin || null,
   };
 }
 
@@ -514,7 +551,9 @@ function buildWatchItemSpecifics(keepaData: any): Array<{name: string, value: st
 
   // --- Country of Origin ---
   let countryOfOrigin = "";
-  if (/原産国.*日本|原産国.*japan/i.test(allText)) countryOfOrigin = "Japan";
+  const keepaOrigin = (keepaData.countryOfOrigin || "").toLowerCase();
+  if (keepaOrigin === "japan" || keepaOrigin === "日本" || /^jp$/i.test(keepaOrigin)) countryOfOrigin = "Japan";
+  else if (/原産国.*日本|原産国.*japan/i.test(allText)) countryOfOrigin = "Japan";
   else if (/日本製|made in japan/i.test(allText)) countryOfOrigin = "Japan";
   else if (/国内正規品/.test(title)) countryOfOrigin = "Japan";
   else if (/japanese.?movement|miyota|seiko.*movement|日本製ムーブメント/i.test(allText)) countryOfOrigin = "Japan";
@@ -1728,6 +1767,7 @@ async function generateDescription(params: {
     color: keepaData.color,
     size: keepaData.size,
     materials: keepaData.materials,
+    country_of_origin: keepaData.countryOfOrigin,
     // 価格・在庫情報
     price_jpy: keepaData.price_jpy,
     stock_available: keepaData.stock_available,
