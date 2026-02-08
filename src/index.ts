@@ -34,25 +34,28 @@ function debugLog(message: string) {
 }
 
 // ===========================================
-// 定数定義（2025年2月改定版 - 正確な手数料率）
+// 定数定義（2026年2月改定 - 実取引データ照合済み）
 // ===========================================
 
-// eBay手数料（2025年2月14日改定）
-const EBAY_FVF_RATE = 0.127;           // Final Value Fee 12.7% (Most categories)
-const EBAY_INTL_FEE_RATE = 0.0135;     // International Fee 1.35% (日本セラー向け)
-const EBAY_PER_ORDER_FEE_HIGH = 0.40;  // Per-order fee ($10超)
-const EBAY_PER_ORDER_FEE_LOW = 0.30;   // Per-order fee ($10以下)
+// eBay手数料（段階制FVF + 消費税）
+const EBAY_FVF_RATE_WATCHES_T1 = 0.15;   // Watches ～$1,000: 15%
+const EBAY_FVF_RATE_WATCHES_T2 = 0.065;  // Watches $1,000超～$7,500: 6.5%
+const EBAY_FVF_RATE_WATCHES_T3 = 0.03;   // Watches $7,500超: 3%
+const EBAY_FVF_RATE_DEFAULT = 0.136;      // Most categories: 13.6%
+const EBAY_INTL_FEE_RATE = 0.0135;        // International Fee 1.35% (日本セラー向け)
+const EBAY_PER_ORDER_FEE_HIGH = 0.40;     // Per-order fee ($10超)
+const EBAY_PER_ORDER_FEE_LOW = 0.30;      // Per-order fee ($10以下)
+const EBAY_TAX_ON_FEES_RATE = 0.10;       // 消費税10%（手数料に対して）
 
-// Payoneer手数料
-const PAYONEER_FEE_RATE = 0.02;        // 決済手数料 2%
-const PAYONEER_FX_SPREAD = 0.02;       // 為替スプレッド（隠しコスト）2%
-const PAYONEER_EFFECTIVE_RATE = 1 - PAYONEER_FX_SPREAD;  // 為替実効レート 98%
-
-// 合計手数料率（Per-order feeを除く）
-const TOTAL_FEE_RATE = EBAY_FVF_RATE + EBAY_INTL_FEE_RATE + PAYONEER_FEE_RATE;
+// Payoneer（FXマークアップのみ、決済手数料なし）
+const PAYONEER_FX_MARKUP = 0.025;         // 為替マークアップ 2.5%
+const PAYONEER_EFFECTIVE_RATE = 1 - PAYONEER_FX_MARKUP;  // 実効レート 97.5%
 
 // 通関手数料（2025年10月改定）
 const CUSTOMS_CLEARANCE_FEE_JPY = 245;
+
+// 米国Sales Tax推定（SpeedPAK DDPで立替、州平均7%）
+const US_SALES_TAX_RATE = 0.07;
 
 // DDP関税率（2025-2026年 実効税率 = MAX(MFN税率, 相互関税15%)）
 // 日本からの輸入品に対する相互関税15%を考慮
@@ -418,7 +421,157 @@ async function keepaGetProduct(asin: string) {
     features: product.features || [],
     description: product.description || null,
     images,
+    // 追加属性（Keepa APIから取得可能なフィールド）
+    color: product.color || null,
+    size: product.size || null,
+    materials: product.materials || [],
   };
+}
+
+// 腕時計Item Specificsを指定順序で構築
+function buildWatchItemSpecifics(keepaData: any): Array<{name: string, value: string}> {
+  const title = keepaData.title || "";
+  const features: string[] = keepaData.features || [];
+  const desc = keepaData.description || "";
+  const allText = (title + " " + features.join(" ") + " " + desc).toLowerCase();
+
+  // --- Department ---
+  let department = "";
+  if (/メンズ|男性|men'?s\b|for men\b/i.test(title)) department = "Men";
+  else if (/レディース|女性|women'?s\b|for women|ladies/i.test(title)) department = "Women";
+  else if (/ユニセックス|unisex|兼用/i.test(title)) department = "Unisex";
+  else if (/g-shock|gショック|ジーショック|プロトレック|protrek|oceanus|オシアナス/i.test(title)) department = "Men";
+
+  // --- Features (max 5, eBay用短縮キーワード) ---
+  const feat: string[] = [];
+  if (/stopwatch|ストップウォッチ/i.test(allText)) feat.push("Stopwatch");
+  if (/alarm|アラーム/i.test(allText)) feat.push("Alarm");
+  if (/backlight|バックライト|illuminator|ライト/i.test(allText)) feat.push("Backlight");
+  if (/calendar|カレンダー|日付/i.test(allText)) feat.push("Calendar");
+  if (/shock.?resist|耐衝撃/i.test(allText)) feat.push("Shock Resistant");
+  if (/bluetooth/i.test(allText)) feat.push("Bluetooth");
+  if (/gps/i.test(allText)) feat.push("GPS");
+  if (/solar|ソーラー|タフソーラー|eco.?drive/i.test(allText)) feat.push("Solar Powered");
+  if (/電波|atomic|multi.?band|マルチバンド|radio.?control/i.test(allText)) feat.push("Radio Controlled");
+  if (/compass|コンパス/i.test(allText)) feat.push("Compass");
+  if (/altimeter|高度計/i.test(allText)) feat.push("Altimeter");
+  if (/barometer|気圧/i.test(allText)) feat.push("Barometer");
+  if (/thermometer|温度/i.test(allText)) feat.push("Thermometer");
+  if (/timer|タイマー/i.test(allText)) feat.push("Timer");
+  if (/world.?time|ワールドタイム/i.test(allText)) feat.push("World Time");
+
+  // --- Movement ---
+  let movement = "";
+  if (/ソーラー|solar|タフソーラー|tough solar|eco.?drive|エコドライブ/i.test(allText)) {
+    movement = "Solar Powered";
+  } else if (/自動巻|automatic|mechanical|メカニカル|機械式/i.test(allText)) {
+    movement = "Mechanical (Automatic)";
+  } else if (/クォーツ|クオーツ|quartz/i.test(allText)) {
+    movement = "Japanese Quartz";
+  } else if (/kinetic|キネティック/i.test(allText)) {
+    movement = "Kinetic";
+  } else if (/casio|カシオ|g-shock/i.test(title)) {
+    movement = "Japanese Quartz";
+  }
+
+  // --- Band Material ---
+  let bandMaterial = "";
+  if (/レジン|resin|ウレタン|urethane|ラバー|rubber|シリコン|silicone/i.test(allText)) bandMaterial = "Resin";
+  else if (/ナイロン|nylon|nato/i.test(allText)) bandMaterial = "Nylon";
+  else if (/レザー|leather|革|皮/i.test(allText)) bandMaterial = "Leather";
+  else if (/チタン|titanium/i.test(allText)) bandMaterial = "Titanium";
+  else if (/ステンレス|stainless/i.test(allText)) bandMaterial = "Stainless Steel";
+
+  // --- Case Material ---
+  let caseMaterial = "";
+  if (/カーボン|carbon/i.test(allText)) caseMaterial = "Carbon Fiber";
+  else if (/チタン|titanium/i.test(allText)) caseMaterial = "Titanium";
+  else if (/ステンレス|stainless/i.test(allText)) caseMaterial = "Stainless Steel";
+  else if (/レジン|resin|プラスチック|plastic/i.test(allText)) caseMaterial = "Resin";
+
+  // --- Display ---
+  let display = "";
+  if (/アナデジ|ana-digi|analog.*digital|digital.*analog/i.test(allText)) display = "Ana-Digi";
+  else if (/デジタル|digital/i.test(allText)) display = "Digital";
+  else if (/アナログ|analog/i.test(allText)) display = "Analog";
+
+  // --- Water Resistance ---
+  let waterResistance = "";
+  const wrBar = allText.match(/(\d+)\s*(bar|気圧|atm)/i);
+  const wrM = allText.match(/(\d+)\s*(m|メートル)\b/i);
+  if (wrBar) {
+    waterResistance = `${parseInt(wrBar[1]) * 10}m`;
+  } else if (wrM) {
+    waterResistance = `${parseInt(wrM[1])}m`;
+  }
+
+  // --- Style ---
+  let style = "";
+  if (/g-shock|sport|スポーツ|outdoor|アウトドア|dive|ダイバー|protrek/i.test(allText)) style = "Sport";
+  else if (/dress|ドレス|formal|フォーマル/i.test(allText)) style = "Dress";
+  else if (/luxury|高級|プレミアム|prestige|グランド/i.test(allText)) style = "Luxury";
+  else style = "Casual";
+
+  // --- Country of Origin ---
+  let countryOfOrigin = "";
+  if (/原産国.*日本|原産国.*japan/i.test(allText)) countryOfOrigin = "Japan";
+  else if (/日本製|made in japan/i.test(allText)) countryOfOrigin = "Japan";
+  else if (/国内正規品/.test(title)) countryOfOrigin = "Japan";
+  else if (/japanese.?movement|miyota|seiko.*movement|日本製ムーブメント/i.test(allText)) countryOfOrigin = "Japan";
+
+  // --- Color (Keepaのcolorフィールドから) ---
+  const color = keepaData.color || "";
+
+  return [
+    { name: "Brand", value: keepaData.brand || "" },
+    { name: "Department", value: department },
+    { name: "Type", value: "Wristwatch" },
+    { name: "UPC", value: "" },
+    { name: "Reference Number", value: keepaData.model || "" },
+    { name: "Customized", value: "No" },
+    { name: "Model", value: keepaData.model || "" },
+    { name: "Features", value: feat.slice(0, 5).join(", ") },
+    { name: "Movement", value: movement },
+    { name: "Band Color", value: "" },
+    { name: "Band Material", value: bandMaterial },
+    { name: "Case Color", value: "" },
+    { name: "Case Material", value: caseMaterial },
+    { name: "Display", value: display },
+    { name: "Water Resistance", value: waterResistance },
+    { name: "Indices", value: "" },
+    { name: "Dial Color", value: "" },
+    { name: "Year Manufactured", value: "" },
+    { name: "Style", value: style },
+    { name: "With Original Box/Packaging", value: "Yes" },
+    { name: "With Papers", value: "Yes" },
+    { name: "Case Size", value: "" },
+    { name: "Watch Shape", value: "" },
+    { name: "Country of Origin", value: countryOfOrigin },
+    { name: "Number of Jewels", value: "" },
+    { name: "Caseback", value: "" },
+    { name: "Case Finish", value: "" },
+    { name: "Lug Width", value: "" },
+    { name: "With Manual/Booklet", value: "Yes" },
+    { name: "With Service Records", value: "No" },
+    { name: "Manufacturer Warranty", value: "" },
+    { name: "Band Width", value: "" },
+    { name: "California Prop 65 Warning", value: "" },
+    { name: "Case Thickness", value: "" },
+    { name: "Escapement Type", value: "" },
+    { name: "Handedness", value: "" },
+    { name: "Handmade", value: "" },
+    { name: "Seller Warranty", value: "" },
+    { name: "Theme", value: "" },
+    { name: "Vintage", value: "No" },
+    { name: "Closure", value: "" },
+    { name: "Band/Strap", value: "" },
+    { name: "Bezel Color", value: "" },
+    { name: "Bezel Type", value: "" },
+    { name: "Dial Pattern", value: "" },
+    { name: "Max Wrist Size", value: "" },
+    { name: "Unit Quantity", value: "" },
+    { name: "Unit Type", value: "" },
+  ];
 }
 
 async function keepaGetTokens(): Promise<number> {
@@ -527,8 +680,19 @@ async function getEbayAppToken(): Promise<string> {
 
 async function ebayRequest(method: string, endpoint: string, body?: any): Promise<any> {
   const token = await getEbayAccessToken();
+  const url = `https://api.ebay.com${endpoint}`;
 
-  const response = await fetch(`https://api.ebay.com${endpoint}`, {
+  debugLog(`[ebayRequest] ${method} ${endpoint}`);
+  if (body) {
+    const bodyStr = JSON.stringify(body);
+    // descriptionは長いので省略
+    const logBody = bodyStr.length > 2000
+      ? bodyStr.substring(0, 2000) + `... (truncated, total ${bodyStr.length} chars)`
+      : bodyStr;
+    debugLog(`[ebayRequest] Body: ${logBody}`);
+  }
+
+  const response = await fetch(url, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -539,10 +703,13 @@ async function ebayRequest(method: string, endpoint: string, body?: any): Promis
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  debugLog(`[ebayRequest] Response: ${response.status} ${response.statusText}`);
+
   if (response.status === 204) return { success: true };
 
   if (!response.ok) {
     const error = await response.text();
+    debugLog(`[ebayRequest] ERROR: ${error}`);
     throw new Error(`eBay API エラー: ${response.status} - ${error}`);
   }
 
@@ -741,6 +908,7 @@ async function ebayCreateListing(params: {
   let keepaData: {
     title: string | null;
     brand: string | null;
+    manufacturer: string | null;
     model: string | null;
     price_jpy: number | null;
     stock_count: number | null;
@@ -760,6 +928,7 @@ async function ebayCreateListing(params: {
       keepaData = {
         title: keepaCheck.title,
         brand: keepaCheck.brand,
+        manufacturer: keepaCheck.manufacturer,
         model: keepaCheck.model,
         price_jpy: keepaCheck.price_jpy,
         stock_count: keepaCheck.stock_count,
@@ -815,10 +984,35 @@ async function ebayCreateListing(params: {
     }
   }
 
+  // ============================================
+  // カテゴリ自動判定（product_categoryが'default'の場合のみ）
+  // ============================================
+  if (product_category === "default" && keepaData) {
+    const autoCategory = estimateProductCategory(
+      keepaData.title || title,
+      keepaData.title || "",  // Keepaのカテゴリ情報がない場合はタイトルを使用
+      keepaData.brand || ""
+    );
+    product_category = autoCategory;
+    debugLog(`[ebayCreateListing] Auto-detected product_category: ${product_category} (from title/brand)`);
+  } else {
+    debugLog(`[ebayCreateListing] Using provided product_category: ${product_category}`);
+  }
+
   // Aspects（Item Specifics）の整形
+  // eBayは1値あたり65文字制限。カンマ区切りの値は配列に分割する
+  const EBAY_ASPECT_VALUE_MAX_LENGTH = 65;
   const aspects: Record<string, string[]> = {};
   for (const [key, value] of Object.entries(item_specifics)) {
-    if (value) aspects[key] = [String(value)];
+    if (!value) continue;
+    const strValue = String(value);
+    if (strValue.includes(",") || strValue.length > EBAY_ASPECT_VALUE_MAX_LENGTH) {
+      // カンマ区切りで分割し、各値をトリムして65文字以内に切り詰め
+      aspects[key] = strValue.split(",").map(v => v.trim()).filter(v => v.length > 0)
+        .map(v => v.substring(0, EBAY_ASPECT_VALUE_MAX_LENGTH));
+    } else {
+      aspects[key] = [strValue];
+    }
   }
 
   // Step 0: Inventory Locationの確認/作成
@@ -864,6 +1058,27 @@ async function ebayCreateListing(params: {
     merchantLocationKey: MERCHANT_LOCATION_KEY,
   };
 
+  // ストアカテゴリの自動付与（メーカー名で照合）
+  const storeCategoryMapStr = process.env.STORE_CATEGORY_MAP;
+  if (storeCategoryMapStr && keepaData?.manufacturer) {
+    try {
+      const storeCategoryMap: Record<string, string> = JSON.parse(storeCategoryMapStr);
+      const manufacturer = keepaData.manufacturer.toLowerCase();
+      for (const [key, categoryPath] of Object.entries(storeCategoryMap)) {
+        if (manufacturer.includes(key.toLowerCase())) {
+          offerData.storeCategoryNames = [categoryPath];
+          debugLog(`[ebayCreateListing] Store category matched: manufacturer="${keepaData.manufacturer}" → "${categoryPath}"`);
+          break;
+        }
+      }
+      if (!offerData.storeCategoryNames) {
+        debugLog(`[ebayCreateListing] No store category match for manufacturer="${keepaData.manufacturer}"`);
+      }
+    } catch (e) {
+      debugLog(`[ebayCreateListing] WARNING: Failed to parse STORE_CATEGORY_MAP: ${e}`);
+    }
+  }
+
   // デフォルトポリシーID（環境変数で設定可能）
   const defaultFulfillmentPolicyId = process.env.EBAY_DEFAULT_FULFILLMENT_POLICY_ID;
   const defaultPaymentPolicyId = process.env.EBAY_DEFAULT_PAYMENT_POLICY_ID;
@@ -904,16 +1119,25 @@ async function ebayCreateListing(params: {
   // Step 4: Monitor APIに登録（ASINが指定されている場合）
   let monitorResult: { success: boolean; message?: string; error?: string } | null = null;
   if (asin) {
+    // Brand/Model: Keepa優先 → item_specificsからフォールバック
+    const brandForMonitor = keepaData?.brand
+      || (item_specifics as Record<string, string>)?.["Brand"]
+      || undefined;
+    const modelForMonitor = keepaData?.model
+      || (item_specifics as Record<string, string>)?.["Model"]
+      || (item_specifics as Record<string, string>)?.["Reference Number"]
+      || undefined;
+
     monitorResult = await registerToMonitor({
       asin,
       sku,
       ebay_item_id: listingId,
       // Keepaタイトル（日本語）を優先、なければeBayタイトル
       product_name: keepaData?.title || title,
-      brand: keepaData?.brand || undefined,
-      model_number: keepaData?.model || undefined,
+      brand: brandForMonitor,
+      model_number: modelForMonitor,
       ebay_price_usd: price_usd,
-      // Keepa価格を優先
+      // Keepa価格を優先、なければ入力値
       current_price_jpy: keepaData?.price_jpy ?? current_price_jpy,
       weight_g: weight_kg ? Math.round(weight_kg * 1000) : undefined,
       size_category,
@@ -922,12 +1146,17 @@ async function ebayCreateListing(params: {
       width_cm,
       height_cm,
       // Keepaデータ（last_checked_atを設定するために必要）
-      stock_count: keepaData?.stock_count,
-      shipping_days_min: keepaData?.shipping_days_min,
-      shipping_days_max: keepaData?.shipping_days_max,
-      is_prime: keepaData?.is_prime,
-      image_url: keepaData?.image_url,
-      status: keepaData?.status,
+      // null値もそのまま送信（null ?? undefinedだとJSONから除外されてしまう）
+      ...(keepaData ? {
+        stock_count: keepaData.stock_count,
+        shipping_days_min: keepaData.shipping_days_min,
+        shipping_days_max: keepaData.shipping_days_max,
+        is_prime: keepaData.is_prime,
+        image_url: keepaData.image_url,
+        status: keepaData.status ?? "正常",
+      } : {
+        status: "正常",
+      }),
     });
   }
 
@@ -1144,12 +1373,28 @@ async function calculatePrice(params: {
       profit_rate: result.expected_profit_rate || 0,
       exchange_rate: breakdown.exchangeRate || 0,
       effective_rate: (breakdown.exchangeRate || 0) * PAYONEER_EFFECTIVE_RATE,
-      ebay_fees_usd: breakdown.ebayFeesUsd || 0,
+      ebay_fees_usd: breakdown.ebayFeeUsd || 0,
     };
   } catch (error: any) {
     debugLog(`[calculatePrice] Error: ${error.message}`);
     throw new Error(`Failed to calculate price via Monitor API: ${error.message}`);
   }
+}
+
+/**
+ * 段階制FVF計算（カテゴリ別）
+ */
+function calculateGraduatedFvf(feeBase: number, category: string): number {
+  const cat = category.toLowerCase();
+  if (cat === "watches" || cat === "jewelry") {
+    if (feeBase <= 1000) return feeBase * EBAY_FVF_RATE_WATCHES_T1;
+    if (feeBase <= 7500) return 1000 * EBAY_FVF_RATE_WATCHES_T1
+                              + (feeBase - 1000) * EBAY_FVF_RATE_WATCHES_T2;
+    return 1000 * EBAY_FVF_RATE_WATCHES_T1
+         + 6500 * EBAY_FVF_RATE_WATCHES_T2
+         + (feeBase - 7500) * EBAY_FVF_RATE_WATCHES_T3;
+  }
+  return feeBase * EBAY_FVF_RATE_DEFAULT;
 }
 
 /**
@@ -1212,19 +1457,20 @@ async function estimateProfit(params: {
   const ddpProcessingUsd = dutyUsd * DDP_PROCESSING_FEE_RATE;
   const ddpJpy = (dutyUsd + ddpProcessingUsd) * exchangeRate;
 
-  // eBay手数料計算
-  const perOrderFee = selling_price_usd > 10 ? EBAY_PER_ORDER_FEE_HIGH : EBAY_PER_ORDER_FEE_LOW;
-  const ebayFeesUsd = selling_price_usd * (EBAY_FVF_RATE + EBAY_INTL_FEE_RATE) + perOrderFee;
+  // eBay手数料計算（課金ベース = 販売価格 × 1.07 Sales Tax込み）
+  const feeBase = selling_price_usd * (1 + US_SALES_TAX_RATE);
+  const fvf = calculateGraduatedFvf(feeBase, product_category);
+  const perOrderFee = feeBase > 10 ? EBAY_PER_ORDER_FEE_HIGH : EBAY_PER_ORDER_FEE_LOW;
+  const intlFee = feeBase * EBAY_INTL_FEE_RATE;
+  const feeSubtotal = fvf + intlFee + perOrderFee;
+  const taxOnFees = feeSubtotal * EBAY_TAX_ON_FEES_RATE;
+  const ebayFeesUsd = feeSubtotal + taxOnFees;
 
-  // Payoneer手数料計算
-  const payoneerDepositUsd = selling_price_usd - ebayFeesUsd;
-  const payoneerFeeUsd = payoneerDepositUsd * PAYONEER_FEE_RATE;
-  const netRevenueUsd = payoneerDepositUsd - payoneerFeeUsd;
-
-  // 実際の手取り（円換算、為替スプレッド適用）
+  // 手取り（Payoneer決済手数料なし、FXマークアップのみ）
+  const netRevenueUsd = selling_price_usd - ebayFeesUsd;
   const actualNetJpy = netRevenueUsd * effectiveRate;
 
-  // 総コスト
+  // 総コスト（Sales Taxはコストではない：eBayがバイヤーから徴収→州に納付）
   const totalCostJpy = keepaData.price_jpy + shippingJpy + ddpJpy + CUSTOMS_CLEARANCE_FEE_JPY;
 
   // 粗利
@@ -1251,8 +1497,11 @@ async function estimateProfit(params: {
     // 詳細内訳
     breakdown: {
       revenue_usd: selling_price_usd,
+      fee_base_usd: Math.round(feeBase * 100) / 100,
+      ebay_fvf_usd: Math.round(fvf * 100) / 100,
       ebay_fees_usd: Math.round(ebayFeesUsd * 100) / 100,
-      payoneer_fee_usd: Math.round(payoneerFeeUsd * 100) / 100,
+      tax_on_fees_usd: Math.round(taxOnFees * 100) / 100,
+      net_revenue_usd: Math.round(netRevenueUsd * 100) / 100,
       net_revenue_jpy: Math.round(actualNetJpy),
       purchase_price_jpy: keepaData.price_jpy,
       shipping_jpy: shippingJpy,
@@ -1302,6 +1551,198 @@ function estimatePackagingWeight(title: string, category: string): number {
   }
 
   return 150; // デフォルト（標準梱包）
+}
+
+/**
+ * 商品カテゴリ自動判定ロジック（タイトル・カテゴリ・ブランドから判定）
+ * DDP関税率決定用のカテゴリを推定
+ */
+function estimateProductCategory(title: string, category: string, brand: string = ""): string {
+  const text = (title + " " + category + " " + brand).toLowerCase();
+
+  // watches（腕時計）: 9%関税
+  if (text.includes("watch") || text.includes("腕時計") || text.includes("ウォッチ") ||
+      text.includes("g-shock") || text.includes("ジーショック") || text.includes("gショック") ||
+      text.includes("seiko") || text.includes("セイコー") ||
+      text.includes("citizen") || text.includes("シチズン") ||
+      text.includes("casio") && (text.includes("watch") || text.includes("時計")) ||
+      text.includes("chronograph") || text.includes("クロノグラフ") ||
+      text.includes("automatic watch") || text.includes("自動巻") ||
+      text.includes("wristwatch")) {
+    return "watches";
+  }
+
+  // electronics（電子機器）: 0%関税（ITA対象品）
+  // ⚠️ 腕時計を除外するため、watchesチェックの後に配置
+  if (text.includes("electronics") || text.includes("電子機器") ||
+      text.includes("headphone") || text.includes("earphone") || text.includes("イヤホン") ||
+      text.includes("speaker") || text.includes("スピーカー") ||
+      text.includes("camera") || text.includes("カメラ") ||
+      text.includes("drone") || text.includes("ドローン") ||
+      text.includes("tablet") || text.includes("タブレット") ||
+      text.includes("laptop") || text.includes("ノートpc") ||
+      text.includes("monitor") || text.includes("モニター") ||
+      text.includes("keyboard") || text.includes("キーボード") ||
+      text.includes("mouse") || text.includes("マウス")) {
+    return "electronics";
+  }
+
+  // toys（おもちゃ）: 15%関税
+  if (text.includes("toy") || text.includes("おもちゃ") || text.includes("トイ") ||
+      text.includes("figure") || text.includes("フィギュア") ||
+      text.includes("doll") || text.includes("人形") || text.includes("ドール") ||
+      text.includes("plush") || text.includes("ぬいぐるみ") ||
+      text.includes("lego") || text.includes("レゴ") ||
+      text.includes("model kit") || text.includes("プラモデル")) {
+    return "toys";
+  }
+
+  // clothing（衣類）: 16%関税
+  if (text.includes("clothing") || text.includes("apparel") || text.includes("衣類") ||
+      text.includes("shirt") || text.includes("シャツ") ||
+      text.includes("pants") || text.includes("パンツ") ||
+      text.includes("jacket") || text.includes("ジャケット") ||
+      text.includes("coat") || text.includes("コート") ||
+      text.includes("dress") || text.includes("ドレス") ||
+      text.includes("skirt") || text.includes("スカート")) {
+    return "clothing";
+  }
+
+  // cosmetics（化粧品）: 15%関税
+  if (text.includes("cosmetic") || text.includes("化粧品") || text.includes("コスメ") ||
+      text.includes("skincare") || text.includes("スキンケア") ||
+      text.includes("makeup") || text.includes("メイク") ||
+      text.includes("cream") || text.includes("クリーム") ||
+      text.includes("serum") || text.includes("美容液") ||
+      text.includes("lotion") || text.includes("化粧水") ||
+      text.includes("mask") || text.includes("マスク") || text.includes("パック")) {
+    return "cosmetics";
+  }
+
+  // jewelry（ジュエリー）: 15%関税
+  // ⚠️ 腕時計を除外
+  if ((text.includes("jewelry") || text.includes("jewellery") || text.includes("ジュエリー") ||
+       text.includes("necklace") || text.includes("ネックレス") ||
+       text.includes("bracelet") || text.includes("ブレスレット") ||
+       text.includes("ring") || text.includes("指輪") || text.includes("リング") ||
+       text.includes("earring") || text.includes("イヤリング") || text.includes("ピアス")) &&
+      !text.includes("watch") && !text.includes("時計")) {
+    return "jewelry";
+  }
+
+  // tools（工具）: 15%関税
+  if (text.includes("tool") || text.includes("工具") ||
+      text.includes("drill") || text.includes("ドリル") ||
+      text.includes("wrench") || text.includes("レンチ") ||
+      text.includes("hammer") || text.includes("ハンマー") ||
+      text.includes("saw") || text.includes("のこぎり")) {
+    return "tools";
+  }
+
+  // food（食品）: 15%関税
+  if (text.includes("food") || text.includes("食品") ||
+      text.includes("snack") || text.includes("スナック") ||
+      text.includes("tea") || text.includes("お茶") ||
+      text.includes("coffee") || text.includes("コーヒー") ||
+      text.includes("seasoning") || text.includes("調味料") ||
+      text.includes("supplement") || text.includes("サプリ")) {
+    return "food";
+  }
+
+  return "default"; // デフォルト: 15%関税
+}
+
+/**
+ * ディスクリプション生成用の構造化データ取得
+ * 実際の英語ディスクリプション生成はClaude側で行う（CLAUDE.mdのテンプレートに従う）
+ */
+async function generateDescription(params: {
+  asin_or_url: string;
+  category?: string;
+}) {
+  const { asin_or_url, category } = params;
+
+  // ASINを抽出
+  const asin = extractAsin(asin_or_url);
+  if (!asin) {
+    return { error: "ASINを抽出できませんでした" };
+  }
+
+  // Keepaから商品情報を取得
+  const keepaData = await keepaGetProduct(asin);
+  if (!keepaData || !keepaData.title) {
+    return { error: "商品情報の取得に失敗しました" };
+  }
+
+  // カテゴリ自動判定
+  const productCategory = category || estimateProductCategory(
+    keepaData.title,
+    keepaData.category || "",
+    keepaData.brand || ""
+  );
+
+  // 梱包重量推定
+  const packagingWeight = estimatePackagingWeight(
+    keepaData.title || "",
+    keepaData.category || ""
+  );
+  const shippingWeight = keepaData.package_weight_g > 0
+    ? keepaData.package_weight_g + packagingWeight
+    : keepaData.weight_g + packagingWeight;
+
+  // サイズカテゴリ判定
+  const totalDimension = (keepaData.package_length_mm || 0) +
+                         (keepaData.package_width_mm || 0) +
+                         (keepaData.package_height_mm || 0);
+  let sizeCategory = "StandardB";
+  if (totalDimension <= 600 && shippingWeight <= 500) {
+    sizeCategory = "StandardA";
+  } else if (totalDimension <= 600 && shippingWeight <= 2000) {
+    sizeCategory = "StandardB";
+  } else if (totalDimension <= 900 && shippingWeight <= 5000) {
+    sizeCategory = "LargeA";
+  } else {
+    sizeCategory = "LargeB";
+  }
+
+  // 構造化データを返す（英語ディスクリプションはClaude側で生成）
+  const result: any = {
+    asin,
+    title_ja: keepaData.title,
+    brand: keepaData.brand,
+    manufacturer: keepaData.manufacturer,
+    model: keepaData.model,
+    category: productCategory,
+    features: keepaData.features || [],
+    description: keepaData.description || "",
+    images: keepaData.images || [],
+    // 商品仕様
+    weight_g: keepaData.weight_g,
+    package_weight_g: keepaData.package_weight_g,
+    shipping_weight_g: shippingWeight,
+    package_length_mm: keepaData.package_length_mm,
+    package_width_mm: keepaData.package_width_mm,
+    package_height_mm: keepaData.package_height_mm,
+    size_category: sizeCategory,
+    // Keepa追加属性
+    color: keepaData.color,
+    size: keepaData.size,
+    materials: keepaData.materials,
+    // 価格・在庫情報
+    price_jpy: keepaData.price_jpy,
+    stock_available: keepaData.stock_available,
+    stock_count: keepaData.stock_count,
+    is_prime: keepaData.is_prime,
+    shipping_days_max: keepaData.shipping_days_max,
+    status: keepaData.status,
+  };
+
+  // 腕時計の場合: Item Specificsを指定順序で構築
+  if (productCategory === "watches") {
+    result.watch_item_specifics = buildWatchItemSpecifics(keepaData);
+  }
+
+  return result;
 }
 
 // ===========================================
@@ -1401,6 +1842,24 @@ const tools: Tool[] = [
         },
       },
       required: ["asin_or_url", "selling_price_usd"],
+    },
+  },
+  {
+    name: "generate_description",
+    description: "Amazon商品のASINから構造化された商品データを取得します。Keepaから商品情報（タイトル、ブランド、特徴、画像、サイズ等）を取得し、カテゴリを自動判定します。実際の英語ディスクリプション生成はClaude側で行います（CLAUDE.mdのテンプレートに従う）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        asin_or_url: {
+          type: "string",
+          description: "Amazon URLまたはASIN（例: B0171RU9NW または https://www.amazon.co.jp/dp/B0171RU9NW）",
+        },
+        category: {
+          type: "string",
+          description: "商品カテゴリ（watches/electronics/food/cosmetics等、未指定時は自動判定）",
+        },
+      },
+      required: ["asin_or_url"],
     },
   },
   {
@@ -1612,6 +2071,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "estimate_profit":
         result = await estimateProfit(args as any);
+        break;
+
+      case "generate_description":
+        result = await generateDescription(args as any);
         break;
 
       case "ebay_suggest_category":

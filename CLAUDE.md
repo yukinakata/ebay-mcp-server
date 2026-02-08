@@ -91,10 +91,12 @@ SKU: ASINと同じ値を使用（例: B0171RU9NW）
     * 成分分析表リンクがあれば追加
     * Precautions・Disclaimer等の必須項目を記載
 Item Specifics: ebay_get_item_aspectsの必須項目を埋める
-  - Country of Origin: 以下のルールで設定
-    * Amazonに原産国の記載がある場合 → その値を使用
-    * Amazonに原産国の記載がなく、ムーブメントが日本製の場合 → Japan
-    * 上記以外 → 未設定
+  - Country of Origin: 以下のルールで設定（上から順に判定、最初に該当したものを適用）
+    * Amazonの「原産国」が「日本」/「Japan」の場合 → Japan
+    * タイトルや説明文に「日本製」「Made in Japan」が含まれる場合 → Japan
+    * Amazonタイトルに「国内正規品」が含まれる場合 → Japan
+    * ムーブメントが日本製の場合 → Japan
+    * 上記すべてに該当しない場合のみ → 未設定
 ```
 
 #### タイトル生成の詳細ルール（80文字制限対応）
@@ -235,8 +237,10 @@ eBay:   Sony Wireless Earbuds WF-1000XM5
 **1. 製品全体が日本製の場合:**
 
 判定条件（タイトル生成ルール1, 3に対応）:
-- Amazonタイトルに「日本製」が含まれる（タイトル生成ルール1に該当）
-- OR: Keepaデータの Country of Origin が "Japan"（タイトル生成ルール3に該当）
+- Amazonタイトルまたは説明文に「日本製」が含まれる
+- OR: Amazonタイトルまたは説明文に「Made in Japan」が含まれる
+- OR: Amazonの「原産国」が「日本」または「Japan」
+- OR: Keepaデータの Country of Origin が "Japan"
 - AND: ムーブメントのみが日本製という記載がない
 
 eBayディスクリプションの記載（必須）:
@@ -257,7 +261,26 @@ Proudly made in Japan, this product represents the highest standards of Japanese
 - 食品: Produced in Japan using authentic Japanese ingredients and methods.
 ```
 
-**2. ムーブメントのみが日本製の場合:**
+**2. Amazonタイトルまたは説明文に「国内正規品」が含まれる場合:**
+
+判定条件（タイトル生成ルール2に対応）:
+- Amazonタイトルまたは説明文に「国内正規品」「[国内正規品]」「（国内正規品）」が含まれる
+- AND: 「日本製」の記載がない（「日本製」がある場合はルール1を適用）
+
+eBayディスクリプションの記載（必須）:
+```
+✅ ディスクリプション内に以下のいずれかを必ず記載する:
+
+推奨フォーマット（h3タグで目立たせる）:
+<h3>🇯🇵 Japan Official/Authorized Product</h3>
+<p>This is a Japan domestic official/authorized product,
+sourced directly from authorized retailers in Japan.</p>
+
+または商品説明の中に自然に組み込む:
+"This is a Japan official/authorized product with full manufacturer warranty in Japan."
+```
+
+**3. ムーブメントのみが日本製の場合:**
 
 判定条件（タイトル生成ルール4に対応）:
 - タイトルまたは説明文に「日本製ムーブメント」「Japanese Movement」「Miyota Movement」「Seiko Movement」等が含まれる（タイトル生成ルール4に該当）
@@ -265,7 +288,7 @@ Proudly made in Japan, this product represents the highest standards of Japanese
 - OR: 明確に「ムーブメントのみ日本製」と記載されている
 
 **Item Specifics の設定:**
-- **Country of Origin: Japan**（Amazonに原産国の記載がない場合でも、ムーブメントが日本製ならJapanに設定）
+- **Country of Origin: Japan**（以下のいずれかに該当すればJapan: ①Amazonに原産国「日本」の記載あり ②タイトルに「国内正規品」あり ③ムーブメントが日本製）
 
 eBayディスクリプションの記載（必須フォーマット）:
 ```
@@ -292,7 +315,7 @@ this timepiece offers precision and durability. The case and band are assembled
 using quality materials, with assembly country varying by production batch.
 ```
 
-**3. 判定が不明確な場合:**
+**4. 判定が不明確な場合:**
 ```
 ❌ "Made in Japan" を記載しない
 ✅ 確実な情報のみを記載する
@@ -302,7 +325,7 @@ Manufactured with high-quality Japanese components.
 Features Japanese craftsmanship and attention to detail.
 ```
 
-**4. トラブル回避のための禁止事項:**
+**5. トラブル回避のための禁止事項:**
 - 製品全体が日本製でない場合に "Made in Japan" と記載してはいけない
 - ムーブメントのみが日本製の場合は、必ず部品レベル（"Movement only"）であることを明記する
 - 曖昧な表現（"Japanese quality" だけ等）は避け、具体的に何が日本製なのかを明記する
@@ -344,6 +367,32 @@ ebay_create_listing({
 - `asin`パラメータは必須（SKU = ASINとなり、監視システムに登録される）
 - `asin`を渡さないと、エラーまたはランダムなSKU（例: WS8M2EU7）が生成される
 - Step 1-2で`keepa_get_product(asin)`に渡したASINと同じ値を使用すること
+```
+
+### Step 7.5: 500エラー時のリカバリ（自動）
+
+`ebay_create_listing` が eBay API 500 Internal Server Error で失敗した場合、以下の手順で自動リカバリする：
+
+```
+【原因】
+eBay Inventory APIの一時障害により、Inventory Itemが中途半端に作成され不整合状態になる。
+PUT（作成/更新）が繰り返し500を返す場合、Inventory Itemは内部的に存在するがレスポンスだけ失敗している。
+
+【リカバリ手順（自動実行・確認不要）】
+1. ebay_update_quantity(sku=ASIN, quantity=1) を実行
+   → これにより不整合状態のInventory Itemが正常化される
+2. 再度 ebay_create_listing を実行（同じパラメータ）
+   → 正常化後はOffer作成→公開まで成功する
+
+【判定基準】
+- ebay_create_listing が500エラーを返した場合、同じリクエストを再試行せず
+  即座にリカバリ手順を実行する（最大リトライ: 1回）
+- リカバリ後も500エラーが続く場合は、eBay APIの広域障害と判断してユーザーに通知
+
+【注意】
+- SKUは変更しない（SKU = ASIN を維持）
+- 他のASINが正常に出品できている場合、特定SKUの不整合が原因
+- 他のASINも含めて全て500エラーの場合は、eBay API全体の障害
 ```
 
 ### Step 8: 出品完了表示
@@ -646,6 +695,144 @@ Item Specifics:
 - Country of Origin: Japan
 ```
 
+### 腕時計（Watches）
+```
+タイトル: [Brand] [Model] [Type] [Key Features] [Made in Japan/Made Japan/Japan]
+例: Casio G-SHOCK GMW-B5000-1JF Full Metal - Made in Japan
+
+HTMLディスクリプション構成（必須セクション）:
+
+<h2>[Full Title with Made in Japan]</h2>
+<p>[商品の概要説明 - 2-3文]</p>
+
+<h3>⚙️ Advanced Technology</h3>
+<ul>
+  <li><strong>[機能名]:</strong> [詳細説明]</li>
+  <!-- Tough Solar, Multi-Band 6, Bluetooth等 -->
+</ul>
+
+<h3>🛡️ Premium Construction</h3>
+<ul>
+  <li><strong>Case Material:</strong> [材質とコーティング]</li>
+  <li><strong>Band Material:</strong> [材質]</li>
+  <li><strong>Water Resistance:</strong> [耐水性能]</li>
+</ul>
+
+<h3>📡 Functions</h3>
+<ul>
+  <li>✅ [機能1]</li>
+  <li>✅ [機能2]</li>
+  <!-- 主要機能をリスト化 -->
+</ul>
+
+<h3>📏 Specifications</h3>
+<ul>
+  <li><strong>Case Material:</strong> [材質]</li>
+  <li><strong>Band Material:</strong> [材質]</li>
+  <li><strong>Weight:</strong> [重量]g</li>
+  <li><strong>Case Size:</strong> [サイズ]mm</li>
+</ul>
+
+<h3>🇯🇵 Made in Japan</h3>
+<p>[製造国に関する説明 - 製品全体 or ムーブメントのみを明確に]</p>
+
+⚠️ 重要: ムーブメントのみが日本製の場合は以下の形式を使用:
+<h3>🇯🇵 Japanese Movement</h3>
+<p>Features a high-quality Japanese-made movement for precise timekeeping.</p>
+<ul>
+  <li><strong>Movement:</strong> Japanese Quartz (Miyota/Seiko, made in Japan)</li>
+  <li><strong>Case:</strong> [材質] (assembly country varies)</li>
+  <li><strong>Band:</strong> [材質] (assembly country varies)</li>
+</ul>
+
+<h3>🚚 Shipping</h3>
+<p><strong>FREE SHIPPING via SpeedPAK</strong></p>
+<ul>
+  <li>Estimated delivery: 7-14 business days after shipment</li>
+  <li>Tracking provided</li>
+  <li>Ships from Japan</li>
+</ul>
+
+<h4>🇺🇸 US Orders</h4>
+<p>Import duties/taxes <strong>INCLUDED</strong>. No additional charges.</p>
+
+<h4>🇬🇧🇪🇺🇦🇺 UK/EU/AU Orders</h4>
+<p>Import duties/taxes may apply (buyer's responsibility).</p>
+
+Item Specifics（腕時計 完全ガイド）:
+
+⚠️ 腕時計はメイン商材。Item Specificsの充実度がeBay検索順位に直結する。
+   以下の全項目をeBay表示順で記載。必ずこの順序で入力すること。
+
+| # | 項目 | 入力ルール | 値の例 |
+|---|------|-----------|--------|
+| 1 | Brand | 必須 | Casio, Seiko, Citizen 等 |
+| 2 | Department | 必須（Amazonの「対象」から判断） | Men / Women / Unisex |
+| 3 | Type | 必須（固定値） | Wristwatch |
+| 4 | UPC | 空でOK | - |
+| 5 | Reference Number | 必須（型番、末尾のJF等含む） | GM-5600GC-1JF |
+| 6 | Customized | 新品の場合: No | No |
+| 7 | Model | 必須 | G-SHOCK GM-5600GC |
+| 8 | Features | 必須（5項目以内、合計65文字以内） | Stopwatch, Alarm, Backlight, Calendar, Shock Resistant |
+| 9 | Movement | 必須 | Mechanical (Automatic) / Japanese Quartz / Solar Powered 等 |
+| 10 | Band Color | 必須 | Black, Silver 等 |
+| 11 | Band Material | 必須 | Stainless Steel / Resin / Leather 等 |
+| 12 | Case Color | 必須 | Black, Silver 等 |
+| 13 | Case Material | 必須 | Stainless Steel / Resin / Titanium 等 |
+| 14 | Display | 必須 | Digital / Analog / Ana-Digi |
+| 15 | Water Resistance | 必須 | 200m, 20 Bar 等 |
+| 16 | Indices | 空でOK（確実に分かれば入力） | Arabic Numerals / Roman Numerals / Bar 等 |
+| 17 | Dial Color | 必須 | Black, Blue, White 等 |
+| 18 | Year Manufactured | 空でOK（確実に分かれば入力） | 2024 等 |
+| 19 | Style | 必須 | Sport / Casual / Dress / Luxury 等 |
+| 20 | With Original Box/Packaging | 新品の場合: Yes | Yes |
+| 21 | With Papers | 新品の場合: Yes | Yes |
+| 22 | Case Size | 確実に分かれば入力（Amazon: ケース直径、ケース幅） | 43.2mm |
+| 23 | Watch Shape | 確実に分かれば入力（Amazon: ケースの形状） | Round / Square / Rectangle / Tonneau |
+| 24 | Country of Origin | 下記ルール参照（①原産国記載あり→その値 ②「国内正規品」あり→Japan ③ムーブメント日本製→Japan ④該当なし→未設定） | Japan 等 |
+| 25 | Number of Jewels | 空でOK（入力不要） | - |
+| 26 | Caseback | 空でOK（入力不要） | - |
+| 27 | Case Finish | 空でOK（入力不要） | - |
+| 28 | Lug Width | 空でOK（入力不要） | - |
+| 29 | With Manual/Booklet | 新品の場合: Yes | Yes |
+| 30 | With Service Records | 新品の場合: No | No |
+| 31 | Manufacturer Warranty | 空でOK（入力不要） | - |
+| 32 | Band Width | 確実に分かれば入力（Amazon: バンド幅） | 22mm |
+| 33 | California Prop 65 Warning | 空でOK（入力不要） | - |
+| 34 | Case Thickness | 確実に分かれば入力（Amazon: ケース厚） | 12.9mm |
+| 35 | Escapement Type | 空でOK（入力不要） | - |
+| 36 | Handedness | 空でOK（入力不要） | - |
+| 37 | Handmade | 空でOK（入力不要） | - |
+| 38 | Seller Warranty | 空でOK（入力不要） | - |
+| 39 | Theme | 空でOK（入力不要） | - |
+| 40 | Vintage | 新品の場合: No | No |
+| 41 | Closure | 確実に分かれば入力（Amazon: 留め金） | Buckle / Fold-over Clasp / Deployment Clasp |
+| 42 | Band/Strap | 空でOK（確実に分かれば入力） | - |
+| 43 | Bezel Color | 必須 | Silver, Black 等 |
+| 44 | Bezel Type | 確実に分かれば入力（Amazon: ベゼル機能、固定ベゼル） | Fixed / Rotating / Unidirectional |
+| 45 | Dial Pattern | 空でOK（確実に分かれば入力） | - |
+| 46 | Max Wrist Size | 空でOK（確実に分かれば入力） | - |
+| 47 | Unit Quantity | 空でOK（入力不要） | - |
+| 48 | Unit Type | 空でOK（入力不要） | - |
+
+【Amazonフィールド名 → eBayマッピング早見表】
+  Amazon「ケース直径」「ケースの幅」 → Case Size (#22)
+  Amazon「ケース厚」               → Case Thickness (#34)
+  Amazon「ケースの形状」            → Watch Shape (#23)
+  Amazon「バンド幅」               → Band Width (#32)
+  Amazon「留め金」                 → Closure (#41)
+  Amazon「ベゼル機能」「固定ベゼル」  → Bezel Type (#44)
+  Amazon「対象」                   → Department (#2)
+  Amazon「バンドの色」              → Band Color (#10)
+  Amazon「文字盤の色」              → Dial Color (#17)
+
+⚠️ 日本製表記の重要ルール:
+1. 製品全体が日本製: "Made in Japan" と明記し、Country of Origin: Japan
+2. ムーブメントのみ日本製: "Japanese Movement (made in Japan)" と明記、
+   "Case and band: assembly country varies" を必ず追加、Country of Origin: Japan
+3. 不明な場合: 日本製表記を使用しない
+```
+
 ## 成分表示・外部リンクの記載方法
 
 ### HTMLテンプレート（人体に影響がある商品用）
@@ -705,19 +892,19 @@ Amazon商品ページや公式サイトに成分分析表へのリンクがあ�
 ## 配送情報テンプレート（説明文に必ず含めること）
 
 ```html
-<h3>Shipping Information</h3>
+<h3>🚚 Shipping</h3>
 <p><strong>FREE SHIPPING</strong> via SpeedPAK International</p>
 <ul>
-  <li>Estimated delivery: 7-14 business days</li>
+  <li>Estimated delivery: 7-14 business days after shipment</li>
   <li>Tracking number provided</li>
   <li>Ships from Japan</li>
 </ul>
 
-<h4>DDP (Delivered Duty Paid) - US Orders</h4>
+<h4>🇺🇸 US Orders</h4>
 <p>For US customers, import duties and taxes are INCLUDED in the price.
 No additional charges upon delivery.</p>
 
-<h4>Other Countries (UK, EU, AU)</h4>
+<h4>🇬🇧🇪🇺🇦🇺 UK/EU/AU Orders</h4>
 <p>Import duties and taxes may apply and are the buyer's responsibility.
 Please check your local customs regulations.</p>
 ```
