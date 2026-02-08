@@ -1455,7 +1455,7 @@ async function estimateProfit(params: {
   const dutyRate = DDP_DUTY_RATES[product_category.toLowerCase()] || DDP_DUTY_RATES.default;
   const dutyUsd = selling_price_usd * dutyRate;
   const ddpProcessingUsd = dutyUsd * DDP_PROCESSING_FEE_RATE;
-  const ddpJpy = (dutyUsd + ddpProcessingUsd) * exchangeRate;
+  const ddpJpy = (dutyUsd + ddpProcessingUsd) * effectiveRate;
 
   // eBay手数料計算（課金ベース = 販売価格 × 1.07 Sales Tax込み）
   const feeBase = selling_price_usd * (1 + US_SALES_TAX_RATE);
