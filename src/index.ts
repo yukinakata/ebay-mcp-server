@@ -629,49 +629,64 @@ async function keepaGetTokens(): Promise<number> {
 // User Access Token（出品・在庫管理用）
 let ebayAccessToken: string | null = null;
 let ebayTokenExpiresAt = 0;
+let tokenRefreshPromise: Promise<string> | null = null;
 
 // Application Token（Taxonomy API用 - ユーザー認証不要）
 let ebayAppToken: string | null = null;
 let ebayAppTokenExpiresAt = 0;
+let appTokenRefreshPromise: Promise<string> | null = null;
 
 async function getEbayAccessToken(): Promise<string> {
   if (ebayAccessToken && Date.now() < ebayTokenExpiresAt) {
     return ebayAccessToken;
   }
 
-  const clientId = process.env.EBAY_CLIENT_ID;
-  const clientSecret = process.env.EBAY_CLIENT_SECRET;
-  const refreshToken = process.env.EBAY_REFRESH_TOKEN;
-
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("eBay API 認証情報が設定されていません");
+  // 既にリフレッシュ中なら、その結果を待つ（競合条件防止）
+  if (tokenRefreshPromise) {
+    return tokenRefreshPromise;
   }
 
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  tokenRefreshPromise = (async () => {
+    try {
+      const clientId = process.env.EBAY_CLIENT_ID;
+      const clientSecret = process.env.EBAY_CLIENT_SECRET;
+      const refreshToken = process.env.EBAY_REFRESH_TOKEN;
 
-  const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${credentials}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-      scope: "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.fulfillment https://api.ebay.com/oauth/api_scope/sell.account",
-    }),
-  });
+      if (!clientId || !clientSecret || !refreshToken) {
+        throw new Error("eBay API 認証情報が設定されていません");
+      }
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`eBay認証エラー: ${response.status} - ${error}`);
-  }
+      const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-  const tokenData = await response.json() as { access_token: string; expires_in: number };
-  ebayAccessToken = tokenData.access_token;
-  ebayTokenExpiresAt = Date.now() + (tokenData.expires_in - 60) * 1000;
+      const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${credentials}`,
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+          scope: "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.fulfillment https://api.ebay.com/oauth/api_scope/sell.account",
+        }),
+      });
 
-  return ebayAccessToken;
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`eBay認証エラー: ${response.status} - ${error}`);
+      }
+
+      const tokenData = await response.json() as { access_token: string; expires_in: number };
+      ebayAccessToken = tokenData.access_token;
+      ebayTokenExpiresAt = Date.now() + (tokenData.expires_in - 60) * 1000;
+
+      return ebayAccessToken;
+    } finally {
+      tokenRefreshPromise = null;
+    }
+  })();
+
+  return tokenRefreshPromise;
 }
 
 // Application Token取得（Taxonomy API用）
@@ -680,79 +695,103 @@ async function getEbayAppToken(): Promise<string> {
     return ebayAppToken;
   }
 
-  const clientId = process.env.EBAY_CLIENT_ID;
-  const clientSecret = process.env.EBAY_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error("eBay API 認証情報が設定されていません");
+  // 既にリフレッシュ中なら、その結果を待つ（競合条件防止）
+  if (appTokenRefreshPromise) {
+    return appTokenRefreshPromise;
   }
 
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  appTokenRefreshPromise = (async () => {
+    try {
+      const clientId = process.env.EBAY_CLIENT_ID;
+      const clientSecret = process.env.EBAY_CLIENT_SECRET;
 
-  const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${credentials}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      scope: "https://api.ebay.com/oauth/api_scope",
-    }),
-  });
+      if (!clientId || !clientSecret) {
+        throw new Error("eBay API 認証情報が設定されていません");
+      }
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`eBay App Token取得エラー: ${response.status} - ${error}`);
-  }
+      const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-  const tokenData = await response.json() as { access_token: string; expires_in: number };
-  ebayAppToken = tokenData.access_token;
-  ebayAppTokenExpiresAt = Date.now() + (tokenData.expires_in - 60) * 1000;
+      const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${credentials}`,
+        },
+        body: new URLSearchParams({
+          grant_type: "client_credentials",
+          scope: "https://api.ebay.com/oauth/api_scope",
+        }),
+      });
 
-  return ebayAppToken;
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`eBay App Token取得エラー: ${response.status} - ${error}`);
+      }
+
+      const tokenData = await response.json() as { access_token: string; expires_in: number };
+      ebayAppToken = tokenData.access_token;
+      ebayAppTokenExpiresAt = Date.now() + (tokenData.expires_in - 60) * 1000;
+
+      return ebayAppToken;
+    } finally {
+      appTokenRefreshPromise = null;
+    }
+  })();
+
+  return appTokenRefreshPromise;
 }
 
 // ===========================================
 // eBay API - リクエスト
 // ===========================================
 
-async function ebayRequest(method: string, endpoint: string, body?: any): Promise<any> {
-  const token = await getEbayAccessToken();
+async function ebayRequest(method: string, endpoint: string, body?: any, maxRetries = 3): Promise<any> {
   const url = `https://api.ebay.com${endpoint}`;
 
   debugLog(`[ebayRequest] ${method} ${endpoint}`);
   if (body) {
     const bodyStr = JSON.stringify(body);
-    // descriptionは長いので省略
     const logBody = bodyStr.length > 2000
       ? bodyStr.substring(0, 2000) + `... (truncated, total ${bodyStr.length} chars)`
       : bodyStr;
     debugLog(`[ebayRequest] Body: ${logBody}`);
   }
 
-  const response = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      "Content-Language": "en-US",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const token = await getEbayAccessToken();
 
-  debugLog(`[ebayRequest] Response: ${response.status} ${response.statusText}`);
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Language": "en-US",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
 
-  if (response.status === 204) return { success: true };
+    debugLog(`[ebayRequest] Response: ${response.status} ${response.statusText}`);
 
-  if (!response.ok) {
-    const error = await response.text();
-    debugLog(`[ebayRequest] ERROR: ${error}`);
-    throw new Error(`eBay API エラー: ${response.status} - ${error}`);
+    if (response.status === 204) return { success: true };
+
+    if (response.ok) return response.json();
+
+    const errorText = await response.text();
+
+    // 5xxエラーはリトライ対象（最終試行以外）
+    if (response.status >= 500 && attempt < maxRetries - 1) {
+      const waitMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+      debugLog(`[ebayRequest] ${response.status} error, retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+      continue;
+    }
+
+    debugLog(`[ebayRequest] ERROR: ${errorText}`);
+    throw new Error(`eBay API エラー: ${response.status} - ${errorText}`);
   }
 
-  return response.json();
+  throw new Error(`eBay API エラー: max retries (${maxRetries}) exceeded`);
 }
 
 async function ebayGetPolicies() {
@@ -887,6 +926,29 @@ async function ebayCreateListing(params: {
     // Keepaチェックスキップオプション
     skip_keepa_check = false,
   } = params;
+
+  // 入力値バリデーション
+  if (!Number.isFinite(price_usd) || price_usd <= 0) {
+    return {
+      success: false,
+      error: `出品中止: 無効な価格です（price_usd: ${price_usd}）。正の数値を指定してください。`,
+      reason: "invalid_price",
+    };
+  }
+  if (price_usd < 1) {
+    return {
+      success: false,
+      error: `出品中止: 価格が低すぎます（$${price_usd}）。最低$1.00以上を指定してください。`,
+      reason: "price_too_low",
+    };
+  }
+  if (weight_kg !== undefined && (!Number.isFinite(weight_kg) || weight_kg <= 0)) {
+    return {
+      success: false,
+      error: `出品中止: 無効な重量です（weight_kg: ${weight_kg}）。正の数値を指定してください。`,
+      reason: "invalid_weight",
+    };
+  }
 
   // 価格制限チェック: SpeedPAK Economyは$800未満のみ対応
   if (price_usd >= 800) {
@@ -1356,68 +1418,136 @@ async function calculatePrice(params: {
     target_profit_rate,
   } = params;
 
+  // 入力値バリデーション
+  if (!Number.isFinite(purchase_price_jpy) || purchase_price_jpy <= 0) {
+    throw new Error(`無効な仕入れ価格です（purchase_price_jpy: ${purchase_price_jpy}）`);
+  }
+  if (!Number.isFinite(weight_g) || weight_g <= 0) {
+    throw new Error(`無効な重量です（weight_g: ${weight_g}）`);
+  }
+
   // Monitor APIに価格計算を委譲（動的粗利率を適用）
-  if (!MONITOR_API_URL || !MONITOR_API_KEY) {
-    throw new Error("MONITOR_API_URL and MONITOR_API_KEY must be configured");
+  // Monitor API未設定時はローカルフォールバック
+  if (MONITOR_API_URL && MONITOR_API_KEY) {
+    try {
+      const url = `${MONITOR_API_URL}/api/calculate_selling_price.php`;
+      const requestBody = {
+        purchase_price_jpy,
+        weight_g,
+        size_category,
+        product_category: category,
+        purchase_quantity: 1,
+      };
+
+      // target_profit_rateが指定されている場合は固定粗利率、指定されていない場合は動的粗利率
+      if (target_profit_rate !== undefined) {
+        (requestBody as any).target_profit_rate = target_profit_rate * 100; // 0.15 → 15
+      }
+
+      debugLog(`[calculatePrice] Calling Monitor API: ${url}`);
+      debugLog(`[calculatePrice] Request: ${JSON.stringify(requestBody)}`);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": MONITOR_API_KEY,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Monitor API error: ${response.status} ${errorText}`);
+      }
+
+      const result = (await response.json()) as any;
+      debugLog(`[calculatePrice] Response: ${JSON.stringify(result)}`);
+
+      if (!result.success || !result.selling_price_usd) {
+        throw new Error(`Monitor API returned error: ${result.error || "Unknown error"}`);
+      }
+
+      // Monitor APIのレスポンスをMCP Serverのフォーマットに変換
+      const breakdown = result.breakdown || {};
+      return {
+        selling_price_usd: result.selling_price_usd,
+        shipping_jpy: breakdown.shippingJpy || 0,
+        ddp_jpy: breakdown.ddpCostJpy || 0,
+        customs_fee_jpy: breakdown.customsFeeJpy || 0,
+        total_cost_jpy: breakdown.totalCostJpy || 0,
+        estimated_profit_jpy: result.expected_profit_jpy || 0,
+        profit_rate: result.expected_profit_rate || 0,
+        exchange_rate: breakdown.exchangeRate || 0,
+        effective_rate: (breakdown.exchangeRate || 0) * PAYONEER_EFFECTIVE_RATE,
+        ebay_fees_usd: breakdown.ebayFeeUsd || 0,
+      };
+    } catch (error: any) {
+      debugLog(`[calculatePrice] Monitor API failed, falling back to local calculation: ${error.message}`);
+    }
   }
 
-  try {
-    const url = `${MONITOR_API_URL}/api/calculate_selling_price.php`;
-    const requestBody = {
-      purchase_price_jpy,
-      weight_g,
-      size_category,
-      product_category: category,
-      purchase_quantity: 1,
-    };
+  // ローカルフォールバック計算（Monitor API未設定 or 障害時）
+  debugLog(`[calculatePrice] Using local fallback calculation`);
+  const profitRate = target_profit_rate ?? 0.15; // デフォルト15%
+  const round2 = (n: number) => Math.round(n * 100) / 100;
 
-    // target_profit_rateが指定されている場合は固定粗利率、指定されていない場合は動的粗利率
-    if (target_profit_rate !== undefined) {
-      (requestBody as any).target_profit_rate = target_profit_rate * 100; // 0.15 → 15
-    }
+  const exchangeRate = await getExchangeRate();
+  const effectiveRate = exchangeRate * PAYONEER_EFFECTIVE_RATE;
+  const shippingJpy = getSpeedpakRate(destination, size_category, weight_g);
+  const dutyRate = DDP_DUTY_RATES[category.toLowerCase()] || DDP_DUTY_RATES.default;
 
-    debugLog(`[calculatePrice] Calling Monitor API: ${url}`);
-    debugLog(`[calculatePrice] Request: ${JSON.stringify(requestBody)}`);
+  // 目標粗利率から販売価格を逆算
+  // 手取JPY = selling_price_usd * (1 - ebayFeeRate) * effectiveRate
+  // 粗利JPY = 手取JPY - 総コストJPY
+  // 粗利率 = 粗利JPY / 手取JPY = profitRate
+  // → 手取JPY = 総コストJPY / (1 - profitRate)
+  // → selling_price_usd = 手取JPY / ((1 - ebayFeeRate) * effectiveRate)
+  const totalFixedCostJpy = purchase_price_jpy + shippingJpy + CUSTOMS_CLEARANCE_FEE_JPY;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": MONITOR_API_KEY,
-      },
-      body: JSON.stringify(requestBody),
-    });
+  // eBay手数料率の近似値（iterativeに正確化）
+  const approxFeeRate = category.toLowerCase() === "watches" ? 0.15 : 0.136;
+  const salesTaxMultiplier = 1 + US_SALES_TAX_RATE;
+  const totalFeeRate = (approxFeeRate + EBAY_INTL_FEE_RATE) * salesTaxMultiplier * (1 + EBAY_TAX_ON_FEES_RATE);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Monitor API error: ${response.status} ${errorText}`);
-    }
+  // 初期推定価格
+  const targetNetJpy = totalFixedCostJpy / (1 - profitRate);
+  let sellingPriceUsd = round2(targetNetJpy / ((1 - totalFeeRate) * effectiveRate));
 
-    const result = (await response.json()) as any;
-    debugLog(`[calculatePrice] Response: ${JSON.stringify(result)}`);
+  // DDP関税を含めた再計算（1回のイテレーションで十分な精度）
+  const dutyUsd = round2(sellingPriceUsd * dutyRate);
+  const ddpProcessingUsd = round2(dutyUsd * DDP_PROCESSING_FEE_RATE);
+  const ddpJpy = Math.round((dutyUsd + ddpProcessingUsd) * effectiveRate);
+  const totalCostJpy = Math.round(totalFixedCostJpy + ddpJpy);
+  const targetNetJpyWithDdp = totalCostJpy / (1 - profitRate);
+  sellingPriceUsd = round2(targetNetJpyWithDdp / ((1 - totalFeeRate) * effectiveRate));
 
-    if (!result.success || !result.selling_price_usd) {
-      throw new Error(`Monitor API returned error: ${result.error || "Unknown error"}`);
-    }
+  // 実際のeBay手数料を計算
+  const feeBase = round2(sellingPriceUsd * salesTaxMultiplier);
+  const fvf = round2(calculateGraduatedFvf(feeBase, category));
+  const perOrderFee = feeBase > 10 ? EBAY_PER_ORDER_FEE_HIGH : EBAY_PER_ORDER_FEE_LOW;
+  const intlFee = round2(feeBase * EBAY_INTL_FEE_RATE);
+  const feeSubtotal = round2(fvf + intlFee + perOrderFee);
+  const taxOnFees = round2(feeSubtotal * EBAY_TAX_ON_FEES_RATE);
+  const ebayFeesUsd = round2(feeSubtotal + taxOnFees);
+  const netRevenueUsd = round2(sellingPriceUsd - ebayFeesUsd);
+  const actualNetJpy = Math.round(netRevenueUsd * effectiveRate);
+  const estimatedProfitJpy = actualNetJpy - totalCostJpy;
+  const actualProfitRate = actualNetJpy > 0 ? Math.round((estimatedProfitJpy / actualNetJpy) * 1000) / 10 : 0;
 
-    // Monitor APIのレスポンスをMCP Serverのフォーマットに変換
-    const breakdown = result.breakdown || {};
-    return {
-      selling_price_usd: result.selling_price_usd,
-      shipping_jpy: breakdown.shippingJpy || 0,
-      ddp_jpy: breakdown.ddpCostJpy || 0,
-      customs_fee_jpy: breakdown.customsFeeJpy || 0,
-      total_cost_jpy: breakdown.totalCostJpy || 0,
-      estimated_profit_jpy: result.expected_profit_jpy || 0,
-      profit_rate: result.expected_profit_rate || 0,
-      exchange_rate: breakdown.exchangeRate || 0,
-      effective_rate: (breakdown.exchangeRate || 0) * PAYONEER_EFFECTIVE_RATE,
-      ebay_fees_usd: breakdown.ebayFeeUsd || 0,
-    };
-  } catch (error: any) {
-    debugLog(`[calculatePrice] Error: ${error.message}`);
-    throw new Error(`Failed to calculate price via Monitor API: ${error.message}`);
-  }
+  return {
+    selling_price_usd: sellingPriceUsd,
+    shipping_jpy: shippingJpy,
+    ddp_jpy: ddpJpy,
+    customs_fee_jpy: CUSTOMS_CLEARANCE_FEE_JPY,
+    total_cost_jpy: totalCostJpy,
+    estimated_profit_jpy: estimatedProfitJpy,
+    profit_rate: actualProfitRate,
+    exchange_rate: exchangeRate,
+    effective_rate: effectiveRate,
+    ebay_fees_usd: ebayFeesUsd,
+    fallback: true, // ローカル計算であることを示す
+  };
 }
 
 /**
@@ -1490,27 +1620,28 @@ async function estimateProfit(params: {
   // 送料計算
   const shippingJpy = getSpeedpakRate("US", sizeCategory, shippingWeight);
 
-  // DDP関税計算
+  // DDP関税計算（各ステップで丸めて浮動小数点誤差を防止）
+  const round2 = (n: number) => Math.round(n * 100) / 100;
   const dutyRate = DDP_DUTY_RATES[product_category.toLowerCase()] || DDP_DUTY_RATES.default;
-  const dutyUsd = selling_price_usd * dutyRate;
-  const ddpProcessingUsd = dutyUsd * DDP_PROCESSING_FEE_RATE;
-  const ddpJpy = (dutyUsd + ddpProcessingUsd) * effectiveRate;
+  const dutyUsd = round2(selling_price_usd * dutyRate);
+  const ddpProcessingUsd = round2(dutyUsd * DDP_PROCESSING_FEE_RATE);
+  const ddpJpy = Math.round((dutyUsd + ddpProcessingUsd) * effectiveRate);
 
   // eBay手数料計算（課金ベース = 販売価格 × 1.07 Sales Tax込み）
-  const feeBase = selling_price_usd * (1 + US_SALES_TAX_RATE);
-  const fvf = calculateGraduatedFvf(feeBase, product_category);
+  const feeBase = round2(selling_price_usd * (1 + US_SALES_TAX_RATE));
+  const fvf = round2(calculateGraduatedFvf(feeBase, product_category));
   const perOrderFee = feeBase > 10 ? EBAY_PER_ORDER_FEE_HIGH : EBAY_PER_ORDER_FEE_LOW;
-  const intlFee = feeBase * EBAY_INTL_FEE_RATE;
-  const feeSubtotal = fvf + intlFee + perOrderFee;
-  const taxOnFees = feeSubtotal * EBAY_TAX_ON_FEES_RATE;
-  const ebayFeesUsd = feeSubtotal + taxOnFees;
+  const intlFee = round2(feeBase * EBAY_INTL_FEE_RATE);
+  const feeSubtotal = round2(fvf + intlFee + perOrderFee);
+  const taxOnFees = round2(feeSubtotal * EBAY_TAX_ON_FEES_RATE);
+  const ebayFeesUsd = round2(feeSubtotal + taxOnFees);
 
   // 手取り（Payoneer決済手数料なし、FXマークアップのみ）
-  const netRevenueUsd = selling_price_usd - ebayFeesUsd;
-  const actualNetJpy = netRevenueUsd * effectiveRate;
+  const netRevenueUsd = round2(selling_price_usd - ebayFeesUsd);
+  const actualNetJpy = Math.round(netRevenueUsd * effectiveRate);
 
   // 総コスト（Sales Taxはコストではない：eBayがバイヤーから徴収→州に納付）
-  const totalCostJpy = keepaData.price_jpy + shippingJpy + ddpJpy + CUSTOMS_CLEARANCE_FEE_JPY;
+  const totalCostJpy = Math.round(keepaData.price_jpy + shippingJpy + ddpJpy + CUSTOMS_CLEARANCE_FEE_JPY);
 
   // 粗利
   const profitJpy = actualNetJpy - totalCostJpy;
