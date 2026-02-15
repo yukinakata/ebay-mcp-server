@@ -54,7 +54,7 @@ const PAYONEER_EFFECTIVE_RATE = 1 - PAYONEER_FX_MARKUP;  // 実効レート 97.5
 // 通関手数料（2025年10月改定）
 const CUSTOMS_CLEARANCE_FEE_JPY = 245;
 
-// 米国Sales Tax推定（SpeedPAK DDPで立替、州平均7%）
+// 米国Sales Tax推定（FICP DDPで立替、州平均7%）
 const US_SALES_TAX_RATE = 0.07;
 
 // DDP関税率（2025-2026年 実効税率 = MAX(MFN税率, 相互関税15%)）
@@ -73,27 +73,41 @@ const DDP_DUTY_RATES: Record<string, number> = {
 
 const DDP_PROCESSING_FEE_RATE = 0.021;
 
-// SpeedPAK送料表（2025年1月16日改定版）
-const SPEEDPAK_RATES: Record<string, Record<string, Record<number, number>>> = {
-  US: {
-    StandardA: { 500: 1367, 1000: 1724, 1500: 2081, 2000: 2303 },
-    StandardB: { 500: 1659, 1000: 2017, 1500: 2374, 2000: 2587 },
-    LargeA: { 1000: 2710, 2000: 3425, 3000: 4140, 4000: 4855, 5000: 5570 },
-    LargeB: { 2000: 3790, 4000: 5220, 6000: 6650, 8000: 8080, 10000: 9510 },
-  },
-  EU: {
-    StandardA: { 500: 1499, 1000: 1893, 1500: 2287, 2000: 2533 },
-    StandardB: { 500: 1819, 1000: 2214, 1500: 2608, 2000: 2843 },
-    LargeA: { 1000: 2971, 2000: 3754, 3000: 4537, 4000: 5320, 5000: 6103 },
-    LargeB: { 2000: 4155, 4000: 5721, 6000: 7287, 8000: 8853, 10000: 10419 },
-  },
-  AU: {
-    StandardA: { 500: 1581, 1000: 1996, 1500: 2411, 2000: 2671 },
-    StandardB: { 500: 1918, 1000: 2334, 1500: 2749, 2000: 2999 },
-    LargeA: { 1000: 3134, 2000: 3960, 3000: 4786, 4000: 5612, 5000: 6438 },
-    LargeB: { 2000: 4383, 4000: 6035, 6000: 7687, 8000: 9339, 10000: 10991 },
-  },
+// FICP送料表（FedEx International Connect Plus）
+// ゾーン別基本送料（JPY）- 燃料割増・混雑時割増は別計算
+const FICP_BASE_RATES: Record<string, Record<number, number>> = {
+  R: { 500: 1716, 1000: 1802, 1500: 2009, 2000: 2170 },  // タイ
+  N: { 500: 1820, 1000: 1903, 1500: 1909, 2000: 2064 },  // ベトナム
+  Y: { 500: 1891, 1000: 1990, 1500: 2080, 2000: 2247 },  // シンガポール
+  V: { 500: 1952, 1000: 2043, 1500: 2140, 2000: 2322 },  // 香港
+  Q: { 500: 2053, 1000: 2149, 1500: 2276, 2000: 2459 },  // マレーシア
+  M: { 500: 2010, 1000: 2346, 1500: 2731, 2000: 3068 },  // 英独仏伊蘭西
+  S: { 500: 2064, 1000: 2236, 1500: 2319, 2000: 2507 },  // フィリピン
+  O: { 500: 1732, 1000: 2652, 1500: 3186, 2000: 3519 },  // インド
+  X: { 500: 2267, 1000: 2372, 1500: 2471, 2000: 2677 },  // 台湾
+  Z: { 500: 2301, 1000: 2386, 1500: 2490, 2000: 2696 },  // 韓国
+  K: { 500: 2481, 1000: 2561, 1500: 2631, 2000: 2852 },  // 中国南部
+  W: { 500: 2481, 1000: 2561, 1500: 2631, 2000: 2852 },  // 中国(南部以外)
+  E: { 500: 2082, 1000: 2558, 1500: 2797, 2000: 3061 },  // 米国西部
+  F: { 500: 2115, 1000: 2599, 1500: 2840, 2000: 3108 },  // 米国他/加/墨
+  H: { 500: 2077, 1000: 2640, 1500: 3182, 2000: 3618 },  // 欧州他
+  I: { 500: 2096, 1000: 2665, 1500: 3157, 2000: 3668 },  // 中東/東欧
+  U: { 500: 2737, 1000: 3014, 1500: 3024, 2000: 3339 },  // 豪州/NZ
+  T: { 500: 2859, 1000: 3001, 1500: 3168, 2000: 3475 },  // インドネシア
 };
+
+// FICP燃料割増金率（変動制・定期更新）
+const FICP_FUEL_SURCHARGE_RATE = 0.322; // 32.2%（2026年2月実績）
+
+// FICP混雑時割増金（JPY/kg、ミニマム37円/件）
+const FICP_CONGESTION_SURCHARGE: Record<string, number> = {
+  R: 10, N: 10, Y: 10, V: 10,
+  Q: 10, S: 10, X: 10, Z: 10,
+  M: 162, E: 162, K: 10, W: 10,
+  F: 162, H: 162, O: 16, I: 162,
+  U: 19, T: 10,
+};
+const FICP_CONGESTION_MINIMUM = 37;
 
 // EBAY_US のカテゴリツリーID
 const EBAY_US_CATEGORY_TREE_ID = "0";
@@ -211,18 +225,56 @@ async function registerToMonitor(data: {
   }
 }
 
-function getSpeedpakRate(destination: string, sizeCategory: string, weightG: number): number {
-  let zone = destination.toUpperCase();
-  if (["UK", "DE", "FR", "IT", "ES"].includes(zone)) zone = "EU";
-  if (!SPEEDPAK_RATES[zone]) zone = "US";
+/**
+ * FICPゾーン別の実送料コストを計算（基本+燃料+混雑時）
+ */
+function getFicpShippingCost(zone: string, weightG: number): number | null {
+  const rates = FICP_BASE_RATES[zone];
+  if (!rates) return null;
 
-  const rates = SPEEDPAK_RATES[zone][sizeCategory] || SPEEDPAK_RATES[zone]["StandardA"];
   const sortedWeights = Object.keys(rates).map(Number).sort((a, b) => a - b);
 
+  let baseRate: number | null = null;
   for (const maxWeight of sortedWeights) {
-    if (weightG <= maxWeight) return rates[maxWeight];
+    if (weightG <= maxWeight) {
+      baseRate = rates[maxWeight];
+      break;
+    }
   }
-  return rates[sortedWeights[sortedWeights.length - 1]];
+  if (baseRate === null) {
+    baseRate = rates[sortedWeights[sortedWeights.length - 1]];
+  }
+
+  // 燃料割増金
+  const fuelSurcharge = Math.round(baseRate * FICP_FUEL_SURCHARGE_RATE);
+
+  // 混雑時割増金（JPY/kg x 請求重量kg、ミニマム37円）
+  const congestionRatePerKg = FICP_CONGESTION_SURCHARGE[zone] ?? 10;
+  const weightKg = weightG / 1000;
+  const congestionSurcharge = Math.max(
+    FICP_CONGESTION_MINIMUM,
+    Math.round(congestionRatePerKg * weightKg)
+  );
+
+  return baseRate + fuelSurcharge + congestionSurcharge;
+}
+
+/**
+ * FICP US向け送料を計算（ゾーンE・Fの平均）
+ * USバイヤーがメインのため、18ゾーン平均ではなくE/F平均を使用。
+ */
+function getFicpAverageShipping(weightG: number): number {
+  const usZones = ['E', 'F'];
+  let total = 0;
+  let count = 0;
+  for (const zone of usZones) {
+    const cost = getFicpShippingCost(zone, weightG);
+    if (cost !== null) {
+      total += cost;
+      count++;
+    }
+  }
+  return count > 0 ? Math.round(total / count) : 0;
 }
 
 async function getExchangeRate(): Promise<number> {
@@ -304,30 +356,44 @@ async function keepaGetProduct(asin: string) {
   const current = stats.current || [];
   const amazonDirectPrice = (current[0] && current[0] > 0) ? current[0] : null; // Amazon本体（常にPrime）
 
-  // 1. offers配列からisPrime=true または isAmazon=true の最安値を探す
-  let bestPrimePrice: number | null = null;
-  if (product.offers && product.liveOffersOrder) {
+  // 1. Amazon直販価格を最優先で使用
+  // FBA出品者のisPrimeフラグはKeepaのデータが実態と異なる場合があるため、
+  // Amazon直販(current[0])が存在する場合はそれを使う
+  if (amazonDirectPrice) {
+    priceJpy = amazonDirectPrice;
+  }
+
+  // 2. Amazon直販がない場合のみ、offers配列からisAmazon=trueの出品を探す
+  if (!priceJpy && product.offers && product.liveOffersOrder) {
     for (const idx of product.liveOffersOrder) {
       const offer = product.offers[idx];
       if (!offer?.offerCSV || offer.offerCSV.length < 3) continue;
-      // offerCSV = [time, price, shipping, time, price, shipping, ...] → 最新価格は末尾から2番目
       const offerPrice = offer.offerCSV[offer.offerCSV.length - 2];
       if (offerPrice <= 0) continue;
-      if (offer.isPrime || offer.isAmazon) {
-        if (bestPrimePrice === null || offerPrice < bestPrimePrice) {
-          bestPrimePrice = offerPrice;
-        }
+      if (offer.isAmazon) {
+        priceJpy = offerPrice;
+        break;
       }
     }
   }
 
-  // 2. Amazon本体価格(current[0])とoffers内Prime最安値を比較、安い方を選択
-  if (amazonDirectPrice && bestPrimePrice) {
-    priceJpy = Math.min(amazonDirectPrice, bestPrimePrice);
-  } else if (amazonDirectPrice) {
-    priceJpy = amazonDirectPrice;
-  } else if (bestPrimePrice) {
-    priceJpy = bestPrimePrice;
+  // 3. Amazon直販もない場合、FBA Prime出品者の最安値をフォールバック
+  if (!priceJpy && product.offers && product.liveOffersOrder) {
+    let bestFbaPrimePrice: number | null = null;
+    for (const idx of product.liveOffersOrder) {
+      const offer = product.offers[idx];
+      if (!offer?.offerCSV || offer.offerCSV.length < 3) continue;
+      const offerPrice = offer.offerCSV[offer.offerCSV.length - 2];
+      if (offerPrice <= 0) continue;
+      if (offer.isPrime && offer.isFBA) {
+        if (bestFbaPrimePrice === null || offerPrice < bestFbaPrimePrice) {
+          bestFbaPrimePrice = offerPrice;
+        }
+      }
+    }
+    if (bestFbaPrimePrice) {
+      priceJpy = bestFbaPrimePrice;
+    }
   }
 
   // 3. Prime価格が取得できない場合、current[10](FBA)にフォールバック
@@ -950,18 +1016,6 @@ async function ebayCreateListing(params: {
     };
   }
 
-  // 価格制限チェック: SpeedPAK Economyは$800未満のみ対応
-  if (price_usd >= 800) {
-    debugLog(`[ebayCreateListing] BLOCKED: Price $${price_usd} exceeds $800 SpeedPAK Economy limit`);
-    return {
-      success: false,
-      error: "出品中止: 販売価格が$800以上です（SpeedPAK Economy制限）",
-      reason: "price_exceeds_limit",
-      price_usd,
-      max_allowed: 800,
-    };
-  }
-
   // 説明文のサニタイズ（CDATAタグなど不要な文字を除去）
   const sanitizedDescription = description
     .replace(/<!\[CDATA\[/g, "")  // CDATA開始タグを除去
@@ -1437,6 +1491,7 @@ async function calculatePrice(params: {
         size_category,
         product_category: category,
         purchase_quantity: 1,
+        shipping_method: 'ficp_average',
       };
 
       // target_profit_rateが指定されている場合は固定粗利率、指定されていない場合は動的粗利率
@@ -1494,7 +1549,7 @@ async function calculatePrice(params: {
 
   const exchangeRate = await getExchangeRate();
   const effectiveRate = exchangeRate * PAYONEER_EFFECTIVE_RATE;
-  const shippingJpy = getSpeedpakRate(destination, size_category, weight_g);
+  const shippingJpy = getFicpAverageShipping(weight_g);
   const dutyRate = DDP_DUTY_RATES[category.toLowerCase()] || DDP_DUTY_RATES.default;
 
   // 目標粗利率から販売価格を逆算
@@ -1618,7 +1673,7 @@ async function estimateProfit(params: {
   const effectiveRate = exchangeRate * PAYONEER_EFFECTIVE_RATE;
 
   // 送料計算
-  const shippingJpy = getSpeedpakRate("US", sizeCategory, shippingWeight);
+  const shippingJpy = getFicpAverageShipping(shippingWeight);
 
   // DDP関税計算（各ステップで丸めて浮動小数点誤差を防止）
   const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -1646,9 +1701,6 @@ async function estimateProfit(params: {
   // 粗利
   const profitJpy = actualNetJpy - totalCostJpy;
   const profitRate = actualNetJpy > 0 ? (profitJpy / actualNetJpy) * 100 : 0;
-
-  // SpeedPAK Economy制限チェック
-  const withinLimit = selling_price_usd < 800;
 
   return {
     asin,
@@ -1681,9 +1733,6 @@ async function estimateProfit(params: {
     },
     exchange_rate: exchangeRate,
     effective_rate: effectiveRate,
-    // SpeedPAK制限チェック
-    speedpak_economy_ok: withinLimit,
-    warning: !withinLimit ? "⚠️ $800以上のためSpeedPAK Economyは使用できません" : undefined,
   };
 }
 
@@ -1974,7 +2023,7 @@ const tools: Tool[] = [
         size_category: {
           type: "string",
           enum: ["StandardA", "StandardB", "LargeA", "LargeB"],
-          description: "SpeedPAKサイズ区分",
+          description: "サイズ区分（economy送料モード時のみ必須、FICP利用時は不要）",
         },
         destination: {
           type: "string",
@@ -1990,7 +2039,7 @@ const tools: Tool[] = [
           description: "目標粗利率（デフォルト: 0.15 = 15%）",
         },
       },
-      required: ["purchase_price_jpy", "weight_g", "size_category"],
+      required: ["purchase_price_jpy", "weight_g"],
     },
   },
   {
@@ -2146,7 +2195,7 @@ const tools: Tool[] = [
         },
         size_category: {
           type: "string",
-          description: "SpeedPAKサイズ区分（StandardA/StandardB/LargeA/LargeB、Monitor連携用）",
+          description: "サイズ区分（StandardA/StandardB/LargeA/LargeB、Monitor連携用）",
         },
         product_category: {
           type: "string",
